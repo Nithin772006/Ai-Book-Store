@@ -1,0 +1,332 @@
+from decimal import Decimal
+from django.core.management.base import BaseCommand
+from catalog.models import Category, Book
+
+
+class Command(BaseCommand):
+    help = "Populate database with curated categories and sample books for development and testing."
+
+    def add_arguments(self, parser):
+        parser.add_argument(
+            '--clear',
+            action='store_true',
+            help='Clear existing books and categories before seeding.',
+        )
+
+    def handle(self, *args, **options):
+        if options['clear']:
+            self.stdout.write("Clearing existing catalog data...")
+            Book.objects.all().delete()
+            Category.objects.all().delete()
+
+        categories_data = [
+            {
+                "name": "Artificial Intelligence & ML",
+                "slug": "ai-machine-learning",
+                "description": "Foundational texts and cutting-edge paradigms in machine learning, neural architectures, and intelligent agents.",
+                "is_active": True,
+            },
+            {
+                "name": "Software Engineering",
+                "slug": "software-engineering",
+                "description": "Principles, architectural patterns, and craftsmanship for constructing dependable systems.",
+                "is_active": True,
+            },
+            {
+                "name": "Data Systems & Algorithms",
+                "slug": "data-systems-algorithms",
+                "description": "Data structures, distributed storage engines, stream processing, and algorithmic problem solving.",
+                "is_active": True,
+            },
+            {
+                "name": "Design & Human Experience",
+                "slug": "design-human-experience",
+                "description": "Cognitive psychology, interactive aesthetics, typography, and human-computer interaction.",
+                "is_active": True,
+            },
+            {
+                "name": "Philosophy & Futures",
+                "slug": "philosophy-futures",
+                "description": "Explorations into consciousness, ethics of synthetic intelligence, and technological destiny.",
+                "is_active": True,
+            },
+        ]
+
+        cat_objs = {}
+        for cdata in categories_data:
+            cat, created = Category.objects.update_or_create(
+                slug=cdata['slug'],
+                defaults=cdata
+            )
+            cat_objs[cat.slug] = cat
+            status_text = "Created" if created else "Updated"
+            self.stdout.write(f"{status_text} category: {cat.name}")
+
+        books_data = [
+            {
+                "title": "Designing Data-Intensive Applications",
+                "slug": "designing-data-intensive-applications",
+                "author": "Martin Kleppmann",
+                "description": "The definitive guide to the principles and architecture behind modern distributed databases, storage engines, stream processing systems, and consensus protocols.",
+                "isbn": "978-1449373320",
+                "publisher": "O'Reilly Media",
+                "publication_date": "2017-03-16",
+                "language": "English",
+                "price": Decimal("49.99"),
+                "discount_price": Decimal("39.99"),
+                "stock_quantity": 24,
+                "category": cat_objs["data-systems-algorithms"],
+                "is_featured": True,
+                "is_bestseller": True,
+                "is_new_arrival": False,
+                "is_active": True,
+            },
+            {
+                "title": "Hands-On Large Language Models",
+                "slug": "hands-on-large-language-models",
+                "author": "Jay Alammar & Maarten Grootendorst",
+                "description": "An intuitive and visual journey into understanding, fine-tuning, evaluating, and deploying modern foundation models, transformers, and multimodal architectures.",
+                "isbn": "978-1098150969",
+                "publisher": "O'Reilly Media",
+                "publication_date": "2024-06-18",
+                "language": "English",
+                "price": Decimal("59.99"),
+                "discount_price": Decimal("47.99"),
+                "stock_quantity": 18,
+                "category": cat_objs["ai-machine-learning"],
+                "is_featured": True,
+                "is_bestseller": True,
+                "is_new_arrival": True,
+                "is_active": True,
+            },
+            {
+                "title": "The Pragmatic Programmer: 20th Anniversary Edition",
+                "slug": "the-pragmatic-programmer-20th-anniversary",
+                "author": "David Thomas & Andrew Hunt",
+                "description": "Classic wisdom on career craftsmanship, pragmatic philosophy, software rot, orthogonal design, and continuous learning for engineers.",
+                "isbn": "978-0135957059",
+                "publisher": "Addison-Wesley Professional",
+                "publication_date": "2019-09-13",
+                "language": "English",
+                "price": Decimal("44.95"),
+                "discount_price": Decimal("36.50"),
+                "stock_quantity": 15,
+                "category": cat_objs["software-engineering"],
+                "is_featured": True,
+                "is_bestseller": True,
+                "is_new_arrival": False,
+                "is_active": True,
+            },
+            {
+                "title": "Artificial Intelligence: A Modern Approach",
+                "slug": "artificial-intelligence-a-modern-approach",
+                "author": "Stuart Russell & Peter Norvig",
+                "description": "The standard authoritative textbook on intelligent agents, probabilistic reasoning, reinforcement learning, knowledge graphs, and machine perception.",
+                "isbn": "978-0134610993",
+                "publisher": "Pearson",
+                "publication_date": "2020-04-28",
+                "language": "English",
+                "price": Decimal("99.99"),
+                "discount_price": Decimal("84.99"),
+                "stock_quantity": 8,
+                "category": cat_objs["ai-machine-learning"],
+                "is_featured": True,
+                "is_bestseller": False,
+                "is_new_arrival": False,
+                "is_active": True,
+            },
+            {
+                "title": "Clean Architecture: A Craftsman's Guide to Software Structure",
+                "slug": "clean-architecture-a-craftsmans-guide",
+                "author": "Robert C. Martin",
+                "description": "Essential structural rules for boundaries, dependency inversion, enterprise business rules, and component cohesion across scalable web platforms.",
+                "isbn": "978-0134494166",
+                "publisher": "Prentice Hall",
+                "publication_date": "2017-09-20",
+                "language": "English",
+                "price": Decimal("39.99"),
+                "discount_price": None,
+                "stock_quantity": 12,
+                "category": cat_objs["software-engineering"],
+                "is_featured": False,
+                "is_bestseller": True,
+                "is_new_arrival": False,
+                "is_active": True,
+            },
+            {
+                "title": "Deep Learning",
+                "slug": "deep-learning-goodfellow",
+                "author": "Ian Goodfellow, Yoshua Bengio & Aaron Courville",
+                "description": "Rigorous mathematical foundation covering linear algebra, probability, numerical computation, deep feedforward networks, convolution, and generative modeling.",
+                "isbn": "978-0262035613",
+                "publisher": "MIT Press",
+                "publication_date": "2016-11-18",
+                "language": "English",
+                "price": Decimal("75.00"),
+                "discount_price": Decimal("64.00"),
+                "stock_quantity": 9,
+                "category": cat_objs["ai-machine-learning"],
+                "is_featured": False,
+                "is_bestseller": False,
+                "is_new_arrival": False,
+                "is_active": True,
+            },
+            {
+                "title": "The Design of Everyday Things: Revised and Expanded Edition",
+                "slug": "the-design-of-everyday-things-revised",
+                "author": "Don Norman",
+                "description": "A classic exploration of affordances, signifiers, mental models, and human-centered design principles that distinguish usable products from frustrating puzzles.",
+                "isbn": "978-0465050659",
+                "publisher": "Basic Books",
+                "publication_date": "2013-11-05",
+                "language": "English",
+                "price": Decimal("24.99"),
+                "discount_price": Decimal("19.99"),
+                "stock_quantity": 20,
+                "category": cat_objs["design-human-experience"],
+                "is_featured": True,
+                "is_bestseller": True,
+                "is_new_arrival": False,
+                "is_active": True,
+            },
+            {
+                "title": "Gödel, Escher, Bach: An Eternal Golden Braid",
+                "slug": "godel-escher-bach-an-eternal-golden-braid",
+                "author": "Douglas R. Hofstadter",
+                "description": "A Pulitzer Prize-winning masterpiece exploring self-reference, strange loops, formal systems, consciousness, and the enigma of human cognition.",
+                "isbn": "978-0465026562",
+                "publisher": "Basic Books",
+                "publication_date": "1999-02-05",
+                "language": "English",
+                "price": Decimal("29.99"),
+                "discount_price": None,
+                "stock_quantity": 14,
+                "category": cat_objs["philosophy-futures"],
+                "is_featured": True,
+                "is_bestseller": False,
+                "is_new_arrival": False,
+                "is_active": True,
+            },
+            {
+                "title": "Building Microservices: Designing Fine-Grained Systems",
+                "slug": "building-microservices-second-edition",
+                "author": "Sam Newman",
+                "description": "Comprehensive strategies for decoupling monoliths, event-driven communications, independent deployment pipelines, service meshes, and observability.",
+                "isbn": "978-1492034025",
+                "publisher": "O'Reilly Media",
+                "publication_date": "2021-09-07",
+                "language": "English",
+                "price": Decimal("54.99"),
+                "discount_price": Decimal("46.75"),
+                "stock_quantity": 11,
+                "category": cat_objs["software-engineering"],
+                "is_featured": False,
+                "is_bestseller": False,
+                "is_new_arrival": True,
+                "is_active": True,
+            },
+            {
+                "title": "Superintelligence: Paths, Dangers, Strategies",
+                "slug": "superintelligence-paths-dangers-strategies",
+                "author": "Nick Bostrom",
+                "description": "A rigorous inquiry into what happens when machine intelligence surpasses collective human intelligence, alignment challenges, and existential risk management.",
+                "isbn": "978-0199678112",
+                "publisher": "Oxford University Press",
+                "publication_date": "2014-07-03",
+                "language": "English",
+                "price": Decimal("21.95"),
+                "discount_price": Decimal("17.50"),
+                "stock_quantity": 7,
+                "category": cat_objs["philosophy-futures"],
+                "is_featured": False,
+                "is_bestseller": False,
+                "is_new_arrival": False,
+                "is_active": True,
+            },
+            {
+                "title": "Refactoring: Improving the Design of Existing Code",
+                "slug": "refactoring-improving-design-existing-code",
+                "author": "Martin Fowler",
+                "description": "The definitive catalog of refactorings with code smells, automated testing strategies, and incremental transformation techniques.",
+                "isbn": "978-0134757599",
+                "publisher": "Addison-Wesley Professional",
+                "publication_date": "2018-11-20",
+                "language": "English",
+                "price": Decimal("49.99"),
+                "discount_price": None,
+                "stock_quantity": 16,
+                "category": cat_objs["software-engineering"],
+                "is_featured": False,
+                "is_bestseller": True,
+                "is_new_arrival": False,
+                "is_active": True,
+            },
+            {
+                "title": "Don't Make Me Think, Revisited",
+                "slug": "dont-make-me-think-revisited",
+                "author": "Steve Krug",
+                "description": "Common-sense approach to web usability, visual hierarchy, user scanning behavior, accessibility, and frictionless navigation.",
+                "isbn": "978-0321965516",
+                "publisher": "New Riders",
+                "publication_date": "2014-01-03",
+                "language": "English",
+                "price": Decimal("35.00"),
+                "discount_price": Decimal("28.00"),
+                "stock_quantity": 0,  # Out of stock for testing
+                "category": cat_objs["design-human-experience"],
+                "is_featured": False,
+                "is_bestseller": False,
+                "is_new_arrival": True,
+                "is_active": True,
+            },
+            {
+                "title": "Structure and Interpretation of Computer Programs (SICP)",
+                "slug": "structure-and-interpretation-of-computer-programs",
+                "author": "Harold Abelson & Gerald Jay Sussman",
+                "description": "Legendary MIT textbook investigating computational processes, higher-order abstractions, metalinguistic abstraction, and register machines.",
+                "isbn": "978-0262510875",
+                "publisher": "MIT Press",
+                "publication_date": "1996-07-25",
+                "language": "English",
+                "price": Decimal("65.00"),
+                "discount_price": Decimal("52.00"),
+                "stock_quantity": 6,
+                "category": cat_objs["data-systems-algorithms"],
+                "is_featured": True,
+                "is_bestseller": False,
+                "is_new_arrival": False,
+                "is_active": True,
+            },
+            {
+                "title": "Generative Deep Learning: Teaching Machines to Paint, Write, and Play",
+                "slug": "generative-deep-learning-second-edition",
+                "author": "David Foster",
+                "description": "Hands-on guide to modern generative models: VAEs, GANs, diffusion models, transformers, and multimodal text-to-image synthesis pipelines.",
+                "isbn": "978-1098134181",
+                "publisher": "O'Reilly Media",
+                "publication_date": "2023-04-11",
+                "language": "English",
+                "price": Decimal("62.99"),
+                "discount_price": Decimal("51.99"),
+                "stock_quantity": 22,
+                "category": cat_objs["ai-machine-learning"],
+                "is_featured": False,
+                "is_bestseller": False,
+                "is_new_arrival": True,
+                "is_active": True,
+            },
+        ]
+
+        for bdata in books_data:
+            book, created = Book.objects.update_or_create(
+                slug=bdata['slug'],
+                defaults=bdata
+            )
+            status_text = "Created" if created else "Updated"
+            self.stdout.write(f"{status_text} book: {book.title} (${book.price})")
+
+        self.stdout.write(
+            self.style.SUCCESS(
+                f"Successfully seeded {len(categories_data)} categories and {len(books_data)} books!"
+            )
+        )

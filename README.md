@@ -188,8 +188,68 @@ The test suite covers both Phase 1 and Phase 2 implementations (`python manage.p
 
 ---
 
-## Next Steps (Phase 3)
+---
 
-- Catalog REST API endpoints (listing, filtering, category details, book details).
-- Search and pagination endpoints.
-- Integration with React frontend catalog components.
+## Phase 3: Public Catalogue API and React Storefront
+
+Phase 3 implements the public, read-only catalogue API with Django REST Framework and a complete React 19 storefront with React Router, search, category filtering, sorting, pagination, book detail views, and editorial styling.
+
+### 1. Backend Catalogue API Endpoints
+
+All public catalogue endpoints are read-only (`GET`, `HEAD`, `OPTIONS`). `POST`, `PUT`, `PATCH`, and `DELETE` requests return `405 Method Not Allowed`.
+
+| Endpoint | Method | Description | Supported Query Parameters |
+| :--- | :--- | :--- | :--- |
+| `/api/health/` | `GET` | System health check (Phase 1) | None |
+| `/api/books/` | `GET` | List active books (paginated) | `search`, `category`, `featured`, `bestseller`, `new_arrival`, `in_stock`, `ordering`, `page`, `page_size` |
+| `/api/books/<id>/` | `GET` | Retrieve single active book by ID | None |
+| `/api/categories/` | `GET` | List all active categories | None |
+| `/api/categories/<slug>/books/` | `GET` | List active books in a category | `search`, `in_stock`, `ordering`, `page`, `page_size` |
+
+#### Query Parameters:
+- **Search (`?search=<query>`)**: Case-insensitive substring matching against book `title`, `author`, `description`, and `isbn`.
+- **Category Filter (`?category=<slug>`)**: Filters books by category slug.
+- **Boolean Filters**:
+  - `?featured=true` — Featured titles
+  - `?bestseller=true` — Bestselling titles
+  - `?new_arrival=true` — Recently added titles
+  - `?in_stock=true` — Titles with `stock_quantity > 0`
+- **Sorting (`?ordering=<field>`)**:
+  - `price` (Price: Low to High)
+  - `-price` (Price: High to Low)
+  - `title` (Title: A to Z)
+  - `-created_at` (Default: Recently added first)
+- **Pagination (`?page=<n>&page_size=<size>`)**: Standard DRF pagination payload with `count`, `next`, `previous`, and `results`. Default page size is 12 (bounded up to 50).
+
+### 2. Seeding Sample Catalogue Data
+
+To populate the database with 5 curated categories and 14 books:
+
+```powershell
+.\.venv\Scripts\python.exe manage.py seed_catalog
+```
+
+To clear and re-seed:
+```powershell
+.\.venv\Scripts\python.exe manage.py seed_catalog --clear
+```
+
+### 3. Frontend Storefront Routes
+
+The React application uses React Router to provide clean navigation with URL persistence for filters and search:
+
+- `/` — Editorial Homepage featuring hero search, categories showcase, featured titles, bestsellers, and new arrivals.
+- `/books` — Full book catalogue with real-time search, category dropdown, sorting, in-stock filter, and pagination.
+- `/books/:id` — Book detail page showcasing full cover image or stylized placeholder, pricing, discount calculations, inventory status, non-functional Phase 4 cart preview, and bibliographic specifications.
+- `/categories/:slug` — Category-specific book listings with category metadata and sub-filtering.
+- `*` — Editorial 404 error page with links back to the homepage and catalogue.
+
+---
+
+## Next Steps (Phase 4)
+
+- User authentication (registration, login, JWT / session management).
+- Persistent cart state and cart badge counter.
+- Wishlist functionality.
+- Checkout flow and order placement.
+
