@@ -4,9 +4,14 @@ An AI-Powered Online Bookstore built with **React (Vite)** on the frontend and *
 
 ---
 
-## Project Status: Phase 1 (Foundation & Health Check)
+## Project Status: Phase 2 (Database Models, Catalog & Django Admin)
 
-Phase 1 establishes the decoupled full-stack architecture, sets up isolated environments, configures CORS policies, and validates connectivity through a dedicated API health-check endpoint.
+Phase 2 builds upon the Phase 1 foundation by establishing the core database schema:
+- **`Category` & `Book` Models** with strict validations, unique slug generation, and database constraints.
+- **Django Admin Interface** with search, filters, in-place toggle edits, and structured fieldsets.
+- **Media File Handling** configured for development cover image uploads.
+- **Reserved Apps** (`accounts`, `newsletter`) scaffolded for upcoming authentication and subscription milestones.
+- **Preserved Health-Check** endpoint (`/api/health/`) and cross-origin security.
 
 ---
 
@@ -30,15 +35,23 @@ Ai-Bookstore/
 │   ├── api/                      # Core bookstore API application
 │   │   ├── views.py              # Health check endpoint view
 │   │   ├── urls.py               # API route definitions (/health/)
-│   │   └── tests.py              # Automated test suite
+│   │   └── tests.py              # Health check automated tests
+│   ├── catalog/                  # Bookstore Catalogue Application
+│   │   ├── models.py             # Category and Book models with validation
+│   │   ├── admin.py              # Customized Django Admin interfaces
+│   │   ├── migrations/           # 0001_initial database migrations
+│   │   └── tests.py              # 14 tests for models, validation, and admin
+│   ├── accounts/                 # Reserved app for future authentication
+│   ├── newsletter/               # Reserved app for future subscriptions
 │   ├── config/                   # Django project configuration
-│   │   ├── settings.py           # DRF, CORS, database, and application settings
-│   │   ├── urls.py               # Root URL router (mounts /api/)
+│   │   ├── settings.py           # DRF, CORS, MEDIA_URL/ROOT, and app settings
+│   │   ├── urls.py               # Root URL router (mounts /api/, /admin/, media)
 │   │   ├── asgi.py               # ASGI entry point
 │   │   └── wsgi.py               # WSGI entry point
+│   ├── media/                    # Development media storage (cover images)
 │   ├── .venv/                    # Python virtual environment (ignored by Git)
 │   ├── manage.py                 # Django management script
-│   ├── requirements.txt          # Python dependencies
+│   ├── requirements.txt          # Python dependencies (django, DRF, cors, pillow)
 │   ├── .env.example              # Backend environment template
 │   └── db.sqlite3                # Local SQLite database (ignored by Git)
 ├── .gitignore                    # Git ignore file for Python, Node, env, and DB
@@ -73,13 +86,13 @@ python -m venv .venv
 # Activate virtual environment
 .\.venv\Scripts\Activate.ps1
 
-# Upgrade pip and install dependencies
+# Upgrade pip and install dependencies (including Pillow)
 pip install -r requirements.txt
 
-# Run initial database migrations
+# Run database migrations
 python manage.py migrate
 
-# Run automated tests to verify API and CORS headers
+# Run automated tests across all apps (16 passing tests)
 python manage.py test
 
 # Start Django development server on port 8000
@@ -88,7 +101,34 @@ python manage.py runserver 127.0.0.1:8000
 
 The Django API server will be available at `http://127.0.0.1:8000`.
 
-### 2. Frontend Setup & Run
+---
+
+### 2. Creating a Django Superuser & Accessing Admin
+
+To manage books and categories through the Django Admin interface:
+
+```powershell
+# From the backend directory with virtual environment activated:
+.\.venv\Scripts\python.exe manage.py createsuperuser
+```
+
+Follow the prompts to enter:
+- **Username** (e.g. `admin`)
+- **Email** (e.g. `admin@example.com`)
+- **Password** (min 8 characters)
+
+Then navigate to:
+```
+http://127.0.0.1:8000/admin/
+```
+
+Log in with your superuser credentials to access:
+- **Categories**: add, edit, search, filter, and toggle active status.
+- **Books**: comprehensive book management with organized fieldsets (Basic Info, Publication Details, Pricing & Inventory, Catalogue Settings, and Timestamps).
+
+---
+
+### 3. Frontend Setup & Run
 
 In the second terminal:
 
@@ -99,9 +139,6 @@ cd frontend
 # Install npm dependencies (if not already installed)
 npm install
 
-# Verify environment file exists (configured to http://127.0.0.1:8000)
-# (Copy from .env.example if missing: Copy-Item .env.example .env)
-
 # Start Vite development server on port 5173
 npm run dev
 ```
@@ -110,62 +147,49 @@ The React dashboard will be accessible at `http://127.0.0.1:5173` or `http://loc
 
 ---
 
-## Verification & API Endpoints
+## Test Data Guidance (Optional Manual Input)
 
-### Direct API Health Check (Browser / PowerShell)
+You can manually populate the following realistic test entries in Django Admin (`http://127.0.0.1:8000/admin/`):
 
-Visit in your browser:
-```
-http://127.0.0.1:8000/api/health/
-```
-
-Or test using PowerShell:
-```powershell
-Invoke-RestMethod -Uri "http://127.0.0.1:8000/api/health/"
-```
-
-**Expected JSON Response:**
-```json
-{
-  "status": "success",
-  "message": "Online Bookstore API is running!",
-  "project": "AI Online Bookstore",
-  "version": "1.0.0"
-}
-```
-
-### React Health Dashboard
-
-Visit `http://localhost:5173` in your browser. The status card will:
-1. Show a loading indicator while requesting Django.
-2. Display a success badge with project name, API version, status code, and latency.
-3. Render the live JSON response payload.
-4. Allow instant re-verification with the "Check Again" button.
-5. Provide detailed troubleshooting steps if the backend server is stopped.
-
----
-
-## CORS Security Policy
-
-CORS is restricted strictly to local React origins in `backend/config/settings.py`:
-- `http://localhost:5173`
-- `http://127.0.0.1:5173`
-
----
-
-## Troubleshooting Guide
-
-| Issue | Cause | Resolution |
+### 1. Categories to Create First:
+| Name | Description | Active |
 | :--- | :--- | :--- |
-| **Connection Refused / Failed to Fetch** | Django server is not running on port 8000 | In the backend terminal, run `python manage.py runserver 127.0.0.1:8000` |
-| **CORS Error in Browser Console** | Origin mismatch | Ensure frontend is accessed on port 5173 and `CORS_ALLOWED_ORIGINS` in `backend/config/settings.py` includes your origin |
-| **PowerShell script execution policy error** | PowerShell execution policy restricted | Run `Set-ExecutionPolicy -Scope Process -ExecutionPolicy Bypass` in your PowerShell session before activating `.venv` |
-| **Port 8000 / 5173 already in use** | Another process occupies the port | Stop the conflicting process or specify an alternative port and update `frontend/.env` accordingly |
+| **Fiction** | Literary works of imagination, storytelling, and contemporary narratives. | Yes |
+| **Technology** | Computing, software engineering, AI, and systems architecture. | Yes |
+| **Business** | Entrepreneurship, leadership, economics, and corporate strategy. | Yes |
+| **Science** | Physics, cosmology, biology, and scientific exploration. | Yes |
+| **Self-Help** | Personal development, productivity, habits, and mindset. | Yes |
+
+### 2. Sample Books to Add:
+| Title | Author | Category | Price | Discount | Stock | ISBN | Flags |
+| :--- | :--- | :--- | :--- | :--- | :--- | :--- | :--- |
+| **The Midnight Library** | Matt Haig | Fiction | $26.00 | $19.99 | 24 | `978-0525559474` | Bestseller |
+| **Designing Data-Intensive Applications** | Martin Kleppmann | Technology | $49.99 | $39.99 | 15 | `978-1449373320` | Featured |
+| **Zero to One** | Peter Thiel | Business | $28.00 | $21.50 | 30 | `978-0804139298` | Bestseller |
+| **Astrophysics for People in a Hurry** | Neil deGrasse Tyson | Science | $18.95 | $14.50 | 18 | `978-0393609394` | New Arrival |
+| **Atomic Habits** | James Clear | Self-Help | $27.00 | $19.99 | 45 | `978-0735211292` | Featured, Bestseller |
 
 ---
 
-## Next Steps (Phase 2)
+## Automated Test Coverage
 
-- Book data models and migrations
-- Custom User Authentication & JWT / Session management
-- Django Admin interface customization
+The test suite covers both Phase 1 and Phase 2 implementations (`python manage.py test`):
+
+- **Health Check API**: Status 200 verification & CORS headers.
+- **Category Creation & String Representation**: `__str__` and automatic slug generation.
+- **Category Slug Collisions**: Collision resolution with incremental suffixes.
+- **Book Relationships**: Foreign key to Category with `related_name="books"` and protected deletion.
+- **Book Slug Generation & Collisions**: Automatic unique slug creation from titles.
+- **Optional ISBN Handling**: Multiple books permitted without ISBNs (`None` normalization).
+- **Duplicate ISBN Prevention**: Enforced via model validation & database uniqueness.
+- **Non-Negative Price Validation**: Enforced via `clean()` and `MinValueValidator`.
+- **Discount Price Validation**: Ensures discount price cannot be negative or exceed regular price.
+- **Admin Registrations**: Verifies `CategoryAdmin` and `BookAdmin` registrations, search fields, filters, and list editable attributes.
+
+---
+
+## Next Steps (Phase 3)
+
+- Catalog REST API endpoints (listing, filtering, category details, book details).
+- Search and pagination endpoints.
+- Integration with React frontend catalog components.
