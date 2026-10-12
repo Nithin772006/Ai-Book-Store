@@ -1,6 +1,11 @@
 import axios from 'axios';
 
-const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || 'http://127.0.0.1:8000/api';
+// Resolve backend API URL from Vite environment variables with fallback.
+// Admin endpoints are called relative to /api (e.g. /admin/books/), so ensure
+// the baseURL always ends with /api regardless of whether the user sets
+// https://backend.onrender.com or https://backend.onrender.com/api.
+const rawApiUrl = (import.meta.env.VITE_API_BASE_URL || import.meta.env.VITE_API_URL || 'http://127.0.0.1:8000/api').trim().replace(/\/+$/, '');
+const API_BASE_URL = rawApiUrl.endsWith('/api') ? rawApiUrl : `${rawApiUrl}/api`;
 
 // In-memory CSRF token storage
 let inMemoryCsrfToken = null;

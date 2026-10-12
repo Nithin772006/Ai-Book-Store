@@ -1,7 +1,11 @@
 import axios from 'axios';
 
 // Resolve backend base URL from Vite environment variables with fallback
-const API_BASE_URL = import.meta.env.VITE_API_URL || 'http://127.0.0.1:8000';
+// Supports both VITE_API_BASE_URL and VITE_API_URL.
+// Normalizes URL by trimming trailing slashes and stripping /api if provided,
+// because frontend API calls already include the /api prefix.
+const rawApiUrl = (import.meta.env.VITE_API_BASE_URL || import.meta.env.VITE_API_URL || 'http://127.0.0.1:8000').trim().replace(/\/+$/, '');
+const API_BASE_URL = rawApiUrl.endsWith('/api') ? rawApiUrl.slice(0, -4) : rawApiUrl;
 
 export const AUTH_TOKEN_KEY = 'exlibris_auth_token';
 

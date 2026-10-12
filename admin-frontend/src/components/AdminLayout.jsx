@@ -99,7 +99,7 @@ export const AdminLayout = () => {
 
           <div className="admin-nav-group-title" style={{ marginTop: 'auto' }}>STOREFRONT LINK</div>
           <a
-            href="http://localhost:5173"
+            href={import.meta.env.VITE_STOREFRONT_URL || 'http://localhost:5173'}
             target="_blank"
             rel="noopener noreferrer"
             className="admin-nav-link admin-nav-link-external"

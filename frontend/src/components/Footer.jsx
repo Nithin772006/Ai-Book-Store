@@ -3,6 +3,7 @@ import { Link } from 'react-router-dom';
 import gsap from 'gsap';
 import { useGSAP } from '@gsap/react';
 import { ScrollTrigger } from 'gsap/ScrollTrigger';
+import { API_BASE_URL } from '../api/client';
 
 gsap.registerPlugin(useGSAP, ScrollTrigger);
 
@@ -86,17 +87,17 @@ export default function Footer() {
           <h4 className="footer-col-title">Archive & System</h4>
           <ul className="footer-menu">
             <li>
-              <a href="http://127.0.0.1:8000/api/health/" target="_blank" rel="noopener noreferrer">
+              <a href={`${API_BASE_URL}/api/health/`} target="_blank" rel="noopener noreferrer">
                 API Diagnostics ↗
               </a>
             </li>
             <li>
-              <a href="http://127.0.0.1:8000/api/books/" target="_blank" rel="noopener noreferrer">
+              <a href={`${API_BASE_URL}/api/books/`} target="_blank" rel="noopener noreferrer">
                 Public JSON Endpoints ↗
               </a>
             </li>
             <li>
-              <a href="http://127.0.0.1:8000/admin/" target="_blank" rel="noopener noreferrer">
+              <a href={`${API_BASE_URL}/admin/`} target="_blank" rel="noopener noreferrer">
                 Curator Administration ↗
               </a>
             </li>

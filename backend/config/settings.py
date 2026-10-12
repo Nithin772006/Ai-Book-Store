@@ -36,7 +36,11 @@ SECRET_KEY = os.environ.get(
 # SECURITY WARNING: don't run with debug turned on in production!
 DEBUG = os.environ.get('DJANGO_DEBUG', 'True').lower() in ('true', '1', 'yes')
 
-ALLOWED_HOSTS = ['127.0.0.1', 'localhost', 'testserver']
+_allowed_hosts_env = os.environ.get('ALLOWED_HOSTS', '')
+if _allowed_hosts_env:
+    ALLOWED_HOSTS = [h.strip() for h in _allowed_hosts_env.split(',') if h.strip()]
+else:
+    ALLOWED_HOSTS = ['127.0.0.1', 'localhost', 'testserver', '.onrender.com']
 
 # Groq AI Provider Configuration (Phase 7 & 8)
 GROQ_API_KEY = os.environ.get('GROQ_API_KEY', '').strip().strip("'\"")
@@ -72,6 +76,7 @@ MIDDLEWARE = [
     # CorsMiddleware should be placed as high as possible, especially before CommonMiddleware
     'corsheaders.middleware.CorsMiddleware',
     'django.middleware.security.SecurityMiddleware',
+    'whitenoise.middleware.WhiteNoiseMiddleware',
     'django.contrib.sessions.middleware.SessionMiddleware',
     'django.middleware.common.CommonMiddleware',
     'django.middleware.csrf.CsrfViewMiddleware',
@@ -169,12 +174,32 @@ USE_TZ = True
 # Static files (CSS, JavaScript, Images)
 # https://docs.djangoproject.com/en/5.2/howto/static-files/
 
-STATIC_URL = 'static/'
+STATIC_URL = '/static/'
+STATIC_ROOT = BASE_DIR / 'staticfiles'
+
+STORAGES = {
+    "default": {
+        "BACKEND": "django.core.files.storage.FileSystemStorage",
+    },
+    "staticfiles": {
+        "BACKEND": "whitenoise.storage.CompressedManifestStaticFilesStorage",
+    },
+}
 
 # Media files (Uploaded files for development)
 # https://docs.djangoproject.com/en/5.2/topics/files/
 MEDIA_URL = '/media/'
 MEDIA_ROOT = BASE_DIR / 'media'
+
+# Trust Render's reverse proxy for HTTPS termination
+SECURE_PROXY_SSL_HEADER = ('HTTP_X_FORWARDED_PROTO', 'https')
+if not DEBUG:
+    SECURE_SSL_REDIRECT = os.environ.get('SECURE_SSL_REDIRECT', 'True').lower() in ('true', '1', 'yes')
+    SESSION_COOKIE_SECURE = True
+    CSRF_COOKIE_SECURE = True
+    SECURE_HSTS_SECONDS = int(os.environ.get('SECURE_HSTS_SECONDS', 31536000))
+    SECURE_HSTS_INCLUDE_SUBDOMAINS = True
+    SECURE_HSTS_PRELOAD = True
 
 # Default primary key field type
 # https://docs.djangoproject.com/en/5.2/ref/settings/#default-auto-field
@@ -207,17 +232,22 @@ REST_FRAMEWORK = {
 
 
 # CORS & CSRF Configuration
-# Restrict CORS & CSRF origins strictly to local customer storefront (5173) and admin portal (5174)
-CORS_ALLOWED_ORIGINS = [
+_default_cors_origins = [
     'http://localhost:5173',
     'http://127.0.0.1:5173',
     'http://localhost:5174',
     'http://127.0.0.1:5174',
 ]
+_cors_env = os.environ.get('CORS_ALLOWED_ORIGINS', '')
+if _cors_env:
+    _custom_cors = [o.strip() for o in _cors_env.split(',') if o.strip()]
+    CORS_ALLOWED_ORIGINS = list(dict.fromkeys(_default_cors_origins + _custom_cors))
+else:
+    CORS_ALLOWED_ORIGINS = _default_cors_origins
 
 CORS_ALLOW_CREDENTIALS = True
 
-CSRF_TRUSTED_ORIGINS = [
+_default_csrf_trusted = [
     'http://localhost:5173',
     'http://127.0.0.1:5173',
     'http://localhost:5174',
@@ -225,6 +255,18 @@ CSRF_TRUSTED_ORIGINS = [
     'http://localhost:8000',
     'http://127.0.0.1:8000',
 ]
+_csrf_env = os.environ.get('CSRF_TRUSTED_ORIGINS', '')
+if _csrf_env:
+    _custom_csrf = [o.strip() for o in _csrf_env.split(',') if o.strip()]
+    CSRF_TRUSTED_ORIGINS = list(dict.fromkeys(_default_csrf_trusted + _custom_csrf))
+else:
+    CSRF_TRUSTED_ORIGINS = _default_csrf_trusted
+
+# Support Vercel preview deployments if explicitly enabled via env var
+if os.environ.get('CORS_ALLOW_VERCEL_PREVIEWS', 'False').lower() in ('true', '1', 'yes'):
+    CORS_ALLOWED_ORIGIN_REGEXES = [
+        r"^https:\/\/.*\.vercel\.app$",
+    ]
 
 # Ensure frontend client can read CSRF token cookie for safe POST requests
 CSRF_COOKIE_HTTPONLY = False
