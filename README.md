@@ -324,3 +324,116 @@ Phase 8 introduces transparent catalogue-based recommendations and an interactiv
 - **Known Limitations**:
   - The assistant possesses knowledge of catalogue metadata only (synopses, author, discipline, publisher). It will honestly decline to reveal specific chapter plots or uncatalogued endings.
 
+---
+
+## Phase 9A: Dedicated Admin Dashboard & Access Control
+
+Phase 9A introduces a standalone, secure administrative React application (`admin-frontend/`) and a comprehensive Django management API suite (`/api/admin/`).
+
+### 1. Local Network Topology & Ports
+
+| Application | Technology | Local Port | URL |
+| :--- | :--- | :--- | :--- |
+| **Customer Storefront** | React + Vite | `5173` | `http://localhost:5173` |
+| **Admin Portal** | React + Vite | `5174` | `http://localhost:5174` *(strictPort enforced)* |
+| **Backend REST API** | Django + DRF | `8000` | `http://localhost:8000/api/` |
+
+> [!IMPORTANT]
+> The separate frontend port (`5174`) is an organizational boundary, **not** a security boundary. Authorization is strictly enforced server-side by Django on every administrative endpoint.
+
+---
+
+### 2. Administrator Provisioning
+
+Ordinary customers cannot self-register as administrators. To create your first administrative curator account, use Django's native management command in your virtual environment:
+
+```powershell
+cd d:\NITHIN\Ai-Bookstore\backend
+.\.venv\Scripts\Activate.ps1
+python manage.py createsuperuser
+```
+
+Enter your desired administrator username, email, and password. This account will have `is_staff=True` and `is_superuser=True`, granting full administrative access to the portal at `http://localhost:5174/login`.
+
+---
+
+### 3. Server-Side Security & Authentication Architecture
+
+1. **Staff Authorization Enforcement:**
+   - All `/api/admin/*` endpoints (except the login authentication view) require authenticated Django accounts where `request.user.is_staff == True`.
+   - **Unauthenticated requests** trigger an immediate **HTTP 401 Unauthorized**.
+   - **Authenticated non-staff customers** trigger an immediate **HTTP 403 Forbidden**.
+   - Frontend role claims (`isAdmin`) are never trusted. All permissions are verified on the Django backend.
+2. **Credential Isolation:**
+   - Password hashes, reset tokens, and sensitive customer secrets are never exposed in administrative serializers or API responses.
+   - Staff cannot deactivate their own accounts or superuser accounts via the API.
+3. **CORS & CSRF Restriction:**
+   - Django's `CORS_ALLOWED_ORIGINS` and `CSRF_TRUSTED_ORIGINS` strictly whitelist `http://localhost:5173`, `http://127.0.0.1:5173`, `http://localhost:5174`, and `http://127.0.0.1:5174`.
+   - Wildcard credentialed access is completely disabled.
+
+---
+
+### 4. Admin REST API Reference (`/api/admin/`)
+
+| Method | Endpoint | Description |
+| :--- | :--- | :--- |
+| `POST` | `/api/admin/auth/login/` | Authenticates administrative staff; rejects non-staff with 403. |
+| `GET` | `/api/admin/auth/me/` | Retrieves authenticated staff profile and permissions. |
+| `POST` | `/api/admin/auth/logout/` | Terminates administrative session and token. |
+| `GET` | `/api/admin/dashboard/` | Aggregated real metrics: volumes, disciplines, patrons, orders, low stock, revenue. |
+| `GET` / `POST` | `/api/admin/books/` | Paginated catalog list with search/filters; create volume with validation. |
+| `GET`/`PATCH`/`DELETE` | `/api/admin/books/<id>/` | View, update, or safely deactivate/delete book. |
+| `GET` / `POST` | `/api/admin/categories/` | List categories with book counts; create discipline. |
+| `GET`/`PATCH`/`DELETE` | `/api/admin/categories/<id>/` | View, update, or safely delete discipline (protected if books exist). |
+| `GET` | `/api/admin/orders/` | Paginated orders with status, payment, and search filters. |
+| `GET` | `/api/admin/orders/<id>/` | Order details with item snapshots, totals, and customer address. |
+| `PATCH` | `/api/admin/orders/<id>/status/` | Advance fulfillment status with legal transition enforcement. |
+| `GET` | `/api/admin/customers/` | Patron account audit with order count and total spend. |
+| `PATCH` | `/api/admin/customers/<id>/status/` | Safely activate or suspend patron account access. |
+| `GET` | `/api/admin/subscribers/` | Newsletter subscriber audit status. |
+
+---
+
+### 5. Starting the Full Stack in Windows PowerShell
+
+Open three separate Windows PowerShell terminal tabs:
+
+#### Terminal 1 — Django Backend (Port 8000)
+```powershell
+cd d:\NITHIN\Ai-Bookstore\backend
+.\.venv\Scripts\Activate.ps1
+python manage.py runserver 127.0.0.1:8000
+```
+
+#### Terminal 2 — Customer Storefront (Port 5173)
+```powershell
+cd d:\NITHIN\Ai-Bookstore\frontend
+npm run dev
+```
+
+#### Terminal 3 — Admin Portal (Port 5174)
+```powershell
+cd d:\NITHIN\Ai-Bookstore\admin-frontend
+npm run dev
+```
+
+---
+
+### 6. Database Engine & Supabase PostgreSQL Migration Readiness
+
+The bookstore currently operates on a local development **SQLite** database (`backend/db.sqlite3`). 
+
+**PostgreSQL & Supabase Readiness Checklist:**
+- [x] **Relational Integrity:** Foreign key constraints are explicitly declared (e.g., `Category.on_delete=PROTECT`, `OrderItem.book=SET_NULL`).
+- [x] **Monetary Precision:** All prices, discounts, and order subtotals use Python `DecimalField(max_digits=10, decimal_places=2)`, directly compatible with PostgreSQL `NUMERIC(10,2)`.
+- [x] **Django Native Auth:** Uses Django's built-in authentication tables, ensuring migrations to PostgreSQL require zero schema alterations.
+- [x] **Unified Access Gateway:** Neither the customer storefront nor the admin portal accesses the database directly; all operations flow through Django ORM.
+
+**Planned Supabase Migration Steps (Future Milestone):**
+1. Provision Supabase PostgreSQL instance and retrieve the connection URL.
+2. Install `psycopg2-binary` or `psycopg` in the Python virtual environment.
+3. Configure `DATABASES['default']` in `settings.py` via `DATABASE_URL` environment variable.
+4. Execute `python manage.py migrate` against the Supabase database.
+5. Export existing development records via `python manage.py dumpdata` and load into Supabase with `python manage.py loaddata`.
+
+

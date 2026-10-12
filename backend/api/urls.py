@@ -9,6 +9,7 @@ from catalog.views import (
 urlpatterns = [
     path('health/', health_check, name='health-check'),
     path('auth/', include('accounts.urls')),
+    path('admin/', include('api.admin_urls')),
     path('cart/', include('cart.urls')),
     path('orders/', include('orders.urls')),
     path('recommendations/', BookRecommendationsView.as_view(), name='book-recommendations'),
