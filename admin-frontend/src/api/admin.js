@@ -165,3 +165,53 @@ export const getAdminSubscribers = async () => {
   const response = await apiClient.get('/admin/subscribers/');
   return response.data;
 };
+
+// ==========================================
+// BULK BOOK IMPORTER
+// ==========================================
+
+export const getImportTemplate = async (format = 'csv') => {
+  const response = await apiClient.get('/admin/books/import/template/', {
+    params: { format },
+    responseType: 'blob',
+    headers: {
+      Accept: format === 'xlsx'
+        ? 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
+        : 'text/csv',
+    },
+  });
+  return response.data;
+};
+
+export const uploadImportFile = async (formData) => {
+  const response = await apiClient.post('/admin/books/import/upload/', formData, {
+    headers: { 'Content-Type': 'multipart/form-data' },
+  });
+  return response.data;
+};
+
+export const validateImportJob = async (payload) => {
+  const response = await apiClient.post('/admin/books/import/validate/', payload);
+  return response.data;
+};
+
+export const confirmImportJob = async (payload) => {
+  const response = await apiClient.post('/admin/books/import/confirm/', payload);
+  return response.data;
+};
+
+export const getImportHistory = async (params = {}) => {
+  const response = await apiClient.get('/admin/books/import/history/', { params });
+  return response.data;
+};
+
+export const downloadErrorReport = async (jobId) => {
+  const response = await apiClient.get(`/admin/books/import/jobs/${jobId}/errors/`, {
+    responseType: 'blob',
+    headers: {
+      Accept: 'text/csv',
+    },
+  });
+  return response.data;
+};
+

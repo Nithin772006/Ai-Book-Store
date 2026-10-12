@@ -697,3 +697,517 @@ class AdminSubscriberListView(APIView):
             "configured": False,
             "message": "The newsletter subscriber model is not currently configured in the database schema."
         }, status=status.HTTP_200_OK)
+
+
+# =============================================================================
+# BULK BOOK IMPORTER VIEWS
+# =============================================================================
+
+import os
+import uuid
+from django.http import HttpResponse
+from catalog.models import ImportJob
+
+from .admin_serializers import AdminImportJobSerializer
+from catalog.importer import (
+    CANONICAL_FIELDS,
+    MAX_CSV_SIZE_BYTES,
+    MAX_XLSX_SIZE_BYTES,
+    MAX_FILE_SIZE_BYTES,
+    MAX_ZIP_SIZE_BYTES,
+    MAX_BATCH_ROWS_LIMIT,
+    parse_spreadsheet_file,
+    get_staged_file_path,
+    stage_uploaded_file,
+    cleanup_staged_file,
+    inspect_staged_file,
+    parse_staged_slice,
+    auto_detect_column_mapping,
+    validate_and_extract_covers_zip,
+    validate_row,
+    normalize_isbn,
+    generate_csv_template,
+    generate_excel_template,
+    generate_error_report_csv,
+    execute_import_job,
+)
+
+
+class AdminBookImportTemplateView(APIView):
+    """
+    GET /api/admin/books/import/template/?format=csv|xlsx
+    Downloads pre-built AETHERIUM import template with sample records.
+    """
+    permission_classes = [IsStaffAdmin]
+
+    def perform_content_negotiation(self, request, force=False):
+        return None, None
+
+    def get(self, request):
+
+        fmt = request.GET.get('format', 'csv').lower().strip()
+        if fmt == 'xlsx':
+            content = generate_excel_template()
+            response = HttpResponse(
+                content,
+                content_type='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
+            )
+            response['Content-Disposition'] = 'attachment; filename="aetherium_book_import_template.xlsx"'
+            return response
+        else:
+            content = generate_csv_template()
+            response = HttpResponse(content, content_type='text/csv; charset=utf-8-sig')
+            response['Content-Disposition'] = 'attachment; filename="aetherium_book_import_template.csv"'
+            return response
+
+
+class AdminBookImportUploadView(APIView):
+    """
+    POST /api/admin/books/import/upload/
+    Accepts CSV/XLSX file and optional cover ZIP.
+    Stages file to disk, inspects headers and total rows count via streaming,
+    and returns initial mapping and dataset statistics without loading all records into RAM.
+    """
+    permission_classes = [IsStaffAdmin]
+    parser_classes = [MultiPartParser, FormParser]
+
+    def post(self, request):
+        enforce_csrf(request)
+
+        file_obj = request.FILES.get('file')
+        if not file_obj:
+            return Response(
+                {"error": "Please provide a spreadsheet file (.csv or .xlsx)."},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+
+        filename = getattr(file_obj, 'name', 'upload.csv')
+        ext = os.path.splitext(filename)[1].lower()
+        if ext not in ('.csv', '.xlsx'):
+            return Response(
+                {"error": f"Unsupported file format '{ext}'. Supported formats: .csv, .xlsx. (Legacy .xls files must be saved as .xlsx)."},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+
+        file_type = 'csv' if ext == '.csv' else 'xlsx'
+        max_size = MAX_CSV_SIZE_BYTES if file_type == 'csv' else MAX_XLSX_SIZE_BYTES
+        max_mb = int(max_size / (1024 * 1024))
+
+        if file_obj.size > max_size:
+            size_mb = round(file_obj.size / (1024 * 1024), 1)
+            return Response(
+                {"error": f"File size ({size_mb} MB) exceeds maximum allowed limit of {max_mb} MB for {file_type.upper()} files."},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+
+        # Handle optional covers ZIP
+        has_zip = False
+        zip_extract_dir = ''
+        zip_file = request.FILES.get('covers_zip')
+        if zip_file:
+            if not zip_file.name.lower().endswith('.zip'):
+                return Response(
+                    {"error": "Cover ZIP error: Only valid .zip archives are supported."},
+                    status=status.HTTP_400_BAD_REQUEST
+                )
+            if zip_file.size > MAX_ZIP_SIZE_BYTES:
+                size_mb = round(zip_file.size / (1024 * 1024), 1)
+                return Response(
+                    {"error": f"Cover ZIP error: Archive size ({size_mb} MB) exceeds maximum allowed limit of 100 MB."},
+                    status=status.HTTP_400_BAD_REQUEST
+                )
+
+            import tempfile
+            import shutil
+            zip_extract_dir = tempfile.mkdtemp(prefix='aetherium_covers_')
+            try:
+                validate_and_extract_covers_zip(zip_file, zip_extract_dir)
+                has_zip = True
+            except ValueError as ze:
+                if os.path.exists(zip_extract_dir):
+                    shutil.rmtree(zip_extract_dir, ignore_errors=True)
+                return Response({"error": f"Cover ZIP error: {str(ze)}"}, status=status.HTTP_400_BAD_REQUEST)
+            except Exception as ze:
+                if os.path.exists(zip_extract_dir):
+                    shutil.rmtree(zip_extract_dir, ignore_errors=True)
+                return Response(
+                    {"error": "Cover ZIP error: Failed to process archive. Please ensure it is a valid, uncorrupted ZIP file."},
+                    status=status.HTTP_400_BAD_REQUEST
+                )
+
+        # Stage uploaded file to disk for streaming
+        job_id = uuid.uuid4()
+        try:
+            staged_path, file_size = stage_uploaded_file(file_obj, job_id, file_type)
+            clean_headers, sample_rows, total_data_rows, encoding, delimiter = inspect_staged_file(staged_path, file_type)
+        except ValueError as ve:
+            cleanup_staged_file(job_id, file_type)
+            return Response({"error": str(ve)}, status=status.HTTP_400_BAD_REQUEST)
+        except Exception as e:
+            cleanup_staged_file(job_id, file_type)
+            return Response(
+                {"error": "Failed to parse spreadsheet file. Please check file formatting."},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+
+        if total_data_rows == 0:
+            cleanup_staged_file(job_id, file_type)
+            return Response(
+                {"error": "The uploaded spreadsheet contains no data rows."},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+
+        # Auto-detect column mapping
+        suggested_mapping = auto_detect_column_mapping(clean_headers)
+
+        # Create ImportJob record (do NOT buffer all rows in parsed_rows!)
+        job = ImportJob.objects.create(
+            job_id=job_id,
+            created_by=request.user,
+            filename=file_obj.name,
+            file_type=file_type,
+            status=ImportJob.STATUS_PENDING,
+            total_rows=total_data_rows,
+            raw_headers=clean_headers,
+            sample_rows=sample_rows,
+            parsed_rows=[],  # Kept empty until slice validation
+            column_mapping=suggested_mapping,
+            has_zip_covers=has_zip,
+            zip_extracted_path=zip_extract_dir,
+        )
+
+        return Response({
+            "job_id": str(job.job_id),
+            "filename": job.filename,
+            "file_type": job.file_type,
+            "file_size": file_size,
+            "total_rows": job.total_rows,
+            "raw_headers": clean_headers,
+            "suggested_mapping": suggested_mapping,
+            "sample_rows": job.sample_rows,
+            "canonical_fields": CANONICAL_FIELDS,
+            "has_zip_covers": has_zip,
+            "max_batch_limit": MAX_BATCH_ROWS_LIMIT,
+        }, status=status.HTTP_201_CREATED)
+
+
+class AdminBookImportValidateView(APIView):
+    """
+    POST /api/admin/books/import/validate/
+    Parses and validates the selected slice (quantity or row range) of records
+    against Book constraints, detecting conflicts, missing categories, and fallbacks.
+    """
+    permission_classes = [IsStaffAdmin]
+
+    def post(self, request):
+        enforce_csrf(request)
+
+        job_id = request.data.get('job_id')
+        if not job_id:
+            return Response({"error": "Missing job_id."}, status=status.HTTP_400_BAD_REQUEST)
+
+        job = ImportJob.objects.filter(job_id=job_id).first()
+        if not job:
+            return Response({"error": "Import job not found."}, status=status.HTTP_404_NOT_FOUND)
+
+        column_mapping = request.data.get('column_mapping') or job.column_mapping
+        conflict_mode = request.data.get('conflict_mode', ImportJob.CONFLICT_SKIP)
+        create_missing_cats = bool(request.data.get('create_missing_categories', False))
+        fallback_values = request.data.get('fallback_values') or {}
+
+        # Parse quantity or row-range selection
+        selection_mode = request.data.get('selection_mode', 'quantity')
+        if selection_mode == 'range':
+            try:
+                start_row = int(request.data.get('start_row', 1))
+                end_row = int(request.data.get('end_row', 50))
+            except (ValueError, TypeError):
+                return Response({"error": "Start row and end row must be valid integers."}, status=status.HTTP_400_BAD_REQUEST)
+
+            if start_row < 1:
+                return Response({"error": "Start row must be at least 1."}, status=status.HTTP_400_BAD_REQUEST)
+            if end_row < start_row:
+                return Response({"error": f"End row ({end_row}) cannot be less than start row ({start_row})."}, status=status.HTTP_400_BAD_REQUEST)
+
+            count_requested = end_row - start_row + 1
+            if count_requested > MAX_BATCH_ROWS_LIMIT:
+                return Response({
+                    "error": f"Requested selection ({count_requested} records) exceeds the maximum batch limit of {MAX_BATCH_ROWS_LIMIT} records."
+                }, status=status.HTTP_400_BAD_REQUEST)
+        else:
+            try:
+                quantity = int(request.data.get('quantity', 50))
+            except (ValueError, TypeError):
+                return Response({"error": "Quantity must be a valid positive integer."}, status=status.HTTP_400_BAD_REQUEST)
+
+            if quantity < 1:
+                return Response({"error": "Quantity must be a positive integer."}, status=status.HTTP_400_BAD_REQUEST)
+            if quantity > MAX_BATCH_ROWS_LIMIT:
+                return Response({
+                    "error": f"Requested quantity ({quantity}) exceeds the maximum batch limit of {MAX_BATCH_ROWS_LIMIT} records."
+                }, status=status.HTTP_400_BAD_REQUEST)
+
+            start_row = 1
+            end_row = min(quantity, job.total_rows) if job.total_rows > 0 else quantity
+
+        # Check required fields are mapped OR configured with fallback defaults
+        required_missing = []
+        for cf in CANONICAL_FIELDS:
+            if cf['required']:
+                has_col = bool(column_mapping.get(cf['key']))
+                has_fallback = bool(fallback_values.get(cf['key']) is not None and str(fallback_values.get(cf['key'])).strip() != '')
+                if not has_col and not has_fallback:
+                    required_missing.append(cf['label'])
+
+        if required_missing:
+            return Response({
+                "error": f"The following required fields must be mapped to a CSV column or configured with fallback defaults: {', '.join(required_missing)}."
+            }, status=status.HTTP_400_BAD_REQUEST)
+
+        # Slice the requested rows from staged file
+        staged_path = get_staged_file_path(job.job_id, job.file_type)
+        if os.path.exists(staged_path):
+            try:
+                raw_slice_rows = parse_staged_slice(
+                    staged_path,
+                    job.file_type,
+                    job.raw_headers,
+                    start_row=start_row,
+                    end_row=end_row,
+                )
+            except ValueError as ve:
+                return Response({"error": str(ve)}, status=status.HTTP_400_BAD_REQUEST)
+        else:
+            # Fallback if job.parsed_rows was already stored (e.g. test or pre-staged)
+            if job.parsed_rows:
+                raw_slice_rows = job.parsed_rows[start_row - 1:end_row]
+            else:
+                return Response({
+                    "error": "The staged import file could not be found. Please re-upload the file to proceed."
+                }, status=status.HTTP_400_BAD_REQUEST)
+
+        if not raw_slice_rows:
+            return Response({
+                "error": f"No data records found in the selected range (Rows {start_row} to {end_row})."
+            }, status=status.HTTP_400_BAD_REQUEST)
+
+        # Cache existing books for fast duplicate checks
+        existing_books_cache = {
+            'by_isbn': {},
+            'by_slug': {b.slug: b for b in Book.objects.all()},
+        }
+        for b in Book.objects.exclude(isbn__isnull=True).exclude(isbn=''):
+            norm_isbn = normalize_isbn(b.isbn)
+            if norm_isbn:
+                existing_books_cache['by_isbn'][norm_isbn] = b
+            existing_books_cache['by_isbn'][b.isbn] = b
+        existing_cats_cache = {
+            c.name.lower().strip(): {'id': c.id, 'name': c.name}
+            for c in Category.objects.all()
+        }
+
+        seen_isbns = {}
+        seen_slugs = {}
+        validated_rows = []
+        error_logs = []
+        missing_categories_set = set()
+
+        valid_cnt = 0
+        warning_cnt = 0
+        invalid_cnt = 0
+        conflict_cnt = 0
+
+        for raw_row in raw_slice_rows:
+            norm, errors, warnings, is_conflict, conflict_details, status_code = validate_row(
+                raw_row, column_mapping, existing_books_cache, existing_cats_cache, seen_isbns, seen_slugs,
+                fallback_values=fallback_values
+            )
+
+            # Check if category is missing
+            cat_name = norm.get('category_name')
+            if cat_name and cat_name.lower().strip() not in existing_cats_cache:
+                missing_categories_set.add(cat_name)
+
+            norm['_row_num'] = raw_row.get('_row_num')
+            norm['_status'] = status_code
+            norm['_errors'] = errors
+            norm['_warnings'] = warnings
+
+            validated_rows.append(norm)
+
+            if status_code == 'error':
+                invalid_cnt += 1
+                error_logs.append({
+                    'row_num': norm['_row_num'],
+                    'title': norm.get('title', ''),
+                    'author': norm.get('author', ''),
+                    'isbn': norm.get('isbn', ''),
+                    'category': norm.get('category_name', ''),
+                    'status': 'error',
+                    'errors': errors,
+                    'warnings': warnings,
+                })
+            elif status_code == 'conflict':
+                conflict_cnt += 1
+            elif status_code == 'warning':
+                warning_cnt += 1
+            else:
+                valid_cnt += 1
+
+        summary = {
+            'total_rows': len(validated_rows),
+            'valid_rows_count': valid_cnt,
+            'warning_rows_count': warning_cnt,
+            'invalid_rows_count': invalid_cnt,
+            'conflict_rows_count': conflict_cnt,
+            'ready_to_import_count': valid_cnt + warning_cnt + (conflict_cnt if conflict_mode == 'update' else 0),
+            'missing_categories': sorted(list(missing_categories_set)),
+            'selected_start_row': start_row,
+            'selected_end_row': end_row,
+            'selected_count': len(validated_rows),
+            'total_available_rows': job.total_rows,
+        }
+
+        # Update job record with only the validated slice
+        job.status = ImportJob.STATUS_VALIDATED
+        job.column_mapping = column_mapping
+        job.conflict_mode = conflict_mode
+        job.create_missing_categories = create_missing_cats
+        job.valid_rows_count = valid_cnt
+        job.warning_rows_count = warning_cnt
+        job.invalid_rows_count = invalid_cnt
+        job.conflict_rows_count = conflict_cnt
+        job.validation_summary = summary
+        job.parsed_rows = validated_rows
+        job.error_summary = error_logs
+        job.save()
+
+        # Paginate preview to first 50 rows
+        preview_page = int(request.data.get('page', 1))
+        page_size = int(request.data.get('page_size', 50))
+        start_idx = (preview_page - 1) * page_size
+        end_idx = start_idx + page_size
+
+        return Response({
+            "job_id": str(job.job_id),
+            "validation_summary": summary,
+            "preview_rows": validated_rows[start_idx:end_idx],
+            "preview_pagination": {
+                "page": preview_page,
+                "page_size": page_size,
+                "total_rows": len(validated_rows),
+                "total_pages": max(1, (len(validated_rows) + page_size - 1) // page_size),
+            },
+            "selection_info": {
+                "start_row": start_row,
+                "end_row": end_row,
+                "selected_count": len(validated_rows),
+                "total_available_rows": job.total_rows,
+                "selection_mode": selection_mode,
+            }
+        }, status=status.HTTP_200_OK)
+
+
+class AdminBookImportConfirmView(APIView):
+    """
+    POST /api/admin/books/import/confirm/
+    Executes validated import in a transactional batch, enforcing maximum batch size.
+    """
+    permission_classes = [IsStaffAdmin]
+
+    def post(self, request):
+        enforce_csrf(request)
+
+        job_id = request.data.get('job_id')
+        idempotency_key = request.data.get('idempotency_key')
+        conflict_mode = request.data.get('conflict_mode', ImportJob.CONFLICT_SKIP)
+        create_missing_cats = bool(request.data.get('create_missing_categories', False))
+
+        if not job_id:
+            return Response({"error": "Missing job_id."}, status=status.HTTP_400_BAD_REQUEST)
+
+        job = ImportJob.objects.filter(job_id=job_id).first()
+        if not job:
+            return Response({"error": "Import job not found."}, status=status.HTTP_404_NOT_FOUND)
+
+        if job.status == ImportJob.STATUS_COMPLETED:
+            return Response({
+                "message": "This import job has already been completed.",
+                "job": AdminImportJobSerializer(job).data
+            }, status=status.HTTP_200_OK)
+
+        if idempotency_key and job.idempotency_key == idempotency_key:
+            return Response({
+                "message": "Duplicate request detected with identical idempotency token.",
+                "job": AdminImportJobSerializer(job).data
+            }, status=status.HTTP_200_OK)
+
+        if idempotency_key:
+            job.idempotency_key = idempotency_key
+            job.save(update_fields=['idempotency_key'])
+
+        # Enforce server-side 5,000 batch limit
+        if len(job.parsed_rows) > MAX_BATCH_ROWS_LIMIT:
+            return Response({
+                "error": f"Batch limit exceeded. A maximum of {MAX_BATCH_ROWS_LIMIT} records can be imported per batch."
+            }, status=status.HTTP_400_BAD_REQUEST)
+
+        try:
+            created_cnt, updated_cnt, skipped_cnt, failed_cnt = execute_import_job(
+                job,
+                conflict_mode=conflict_mode,
+                create_missing_categories=create_missing_cats
+            )
+
+            # Clean up staged file after successful import execution
+            cleanup_staged_file(job.job_id, job.file_type)
+
+            return Response({
+                "message": f"Import completed successfully. Created: {created_cnt}, Updated: {updated_cnt}, Skipped: {skipped_cnt}, Failed: {failed_cnt}.",
+                "job": AdminImportJobSerializer(job).data,
+                "has_errors": len(job.error_summary) > 0,
+            }, status=status.HTTP_200_OK)
+        except Exception as e:
+            return Response({
+                "error": f"Import execution failed: {str(e)}",
+                "job": AdminImportJobSerializer(job).data
+            }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+
+
+
+class AdminBookImportHistoryView(APIView):
+    """
+    GET /api/admin/books/import/history/
+    Returns recent import job audit records.
+    """
+    permission_classes = [IsStaffAdmin]
+
+    def get(self, request):
+        jobs = ImportJob.objects.select_related('created_by').all()[:30]
+        return Response({
+            "results": AdminImportJobSerializer(jobs, many=True).data,
+            "count": jobs.count()
+        }, status=status.HTTP_200_OK)
+
+
+class AdminBookImportErrorReportView(APIView):
+    """
+    GET /api/admin/books/import/jobs/<uuid:job_id>/errors/
+    Downloads formula-injection-safe CSV error report for a job.
+    """
+    permission_classes = [IsStaffAdmin]
+
+    def perform_content_negotiation(self, request, force=False):
+        return None, None
+
+    def get(self, request, job_id):
+
+        job = ImportJob.objects.filter(job_id=job_id).first()
+        if not job:
+            return Response({"error": "Import job not found."}, status=status.HTTP_404_NOT_FOUND)
+
+        csv_content = generate_error_report_csv(job)
+        response = HttpResponse(csv_content, content_type='text/csv; charset=utf-8-sig')
+        response['Content-Disposition'] = f'attachment; filename="aetherium_import_errors_{job.job_id}.csv"'
+        return response
+

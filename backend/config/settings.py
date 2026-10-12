@@ -236,3 +236,24 @@ CORS_EXPOSE_HEADERS = [
     'Content-Type',
     'X-CSRFToken',
 ]
+
+# =============================================================================
+# FILE UPLOAD & MEMORY HANDLING CONFIGURATION
+# =============================================================================
+# Stream files larger than 5 MB directly to disk via TemporaryFileUploadHandler
+# rather than buffering up to 100 MB archives or large datasets into server RAM.
+FILE_UPLOAD_MAX_MEMORY_SIZE = 5 * 1024 * 1024  # 5 MB
+
+# Standard form payload memory threshold (allow up to 110 MB for large multipart streams)
+DATA_UPLOAD_MAX_MEMORY_SIZE = 110 * 1024 * 1024  # 110 MB
+
+# Configurable bulk book import file limits
+MAX_CSV_IMPORT_SIZE_BYTES = int(os.environ.get('MAX_CSV_IMPORT_SIZE_BYTES', 100 * 1024 * 1024))   # 100 MB
+MAX_XLSX_IMPORT_SIZE_BYTES = int(os.environ.get('MAX_XLSX_IMPORT_SIZE_BYTES', 20 * 1024 * 1024))  # 20 MB
+
+# Upload handlers: buffer small files (<5MB) in memory, stream large files to temp disk
+FILE_UPLOAD_HANDLERS = [
+    'django.core.files.uploadhandler.MemoryFileUploadHandler',
+    'django.core.files.uploadhandler.TemporaryFileUploadHandler',
+]
+

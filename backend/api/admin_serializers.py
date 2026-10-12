@@ -298,3 +298,39 @@ class AdminCustomerSerializer(serializers.ModelSerializer):
     def get_full_name(self, obj):
         name = f"{obj.first_name} {obj.last_name}".strip()
         return name if name else obj.username
+
+
+from catalog.models import ImportJob
+
+class AdminImportJobSerializer(serializers.ModelSerializer):
+    """
+    Serializer for bulk import history and job audit records.
+    """
+    created_by_username = serializers.CharField(source='created_by.username', read_only=True)
+
+    class Meta:
+        model = ImportJob
+        fields = [
+            'id',
+            'job_id',
+            'filename',
+            'file_type',
+            'status',
+            'total_rows',
+            'valid_rows_count',
+            'warning_rows_count',
+            'invalid_rows_count',
+            'conflict_rows_count',
+            'created_count',
+            'updated_count',
+            'skipped_count',
+            'failed_count',
+            'conflict_mode',
+            'create_missing_categories',
+            'has_zip_covers',
+            'created_by_username',
+            'created_at',
+            'completed_at',
+        ]
+        read_only_fields = fields
+

@@ -21,7 +21,14 @@ from .admin_views import (
     AdminCustomerDetailView,
     AdminCustomerStatusUpdateView,
     AdminSubscriberListView,
+    AdminBookImportTemplateView,
+    AdminBookImportUploadView,
+    AdminBookImportValidateView,
+    AdminBookImportConfirmView,
+    AdminBookImportHistoryView,
+    AdminBookImportErrorReportView,
 )
+
 
 urlpatterns = [
     # Auth & CSRF
@@ -36,6 +43,12 @@ urlpatterns = [
     # Books
     path('books/', AdminBookListCreateView.as_view(), name='admin-book-list-create'),
     path('books/<int:book_id>/', AdminBookDetailView.as_view(), name='admin-book-detail'),
+    path('books/import/template/', AdminBookImportTemplateView.as_view(), name='admin-book-import-template'),
+    path('books/import/upload/', AdminBookImportUploadView.as_view(), name='admin-book-import-upload'),
+    path('books/import/validate/', AdminBookImportValidateView.as_view(), name='admin-book-import-validate'),
+    path('books/import/confirm/', AdminBookImportConfirmView.as_view(), name='admin-book-import-confirm'),
+    path('books/import/history/', AdminBookImportHistoryView.as_view(), name='admin-book-import-history'),
+    path('books/import/jobs/<uuid:job_id>/errors/', AdminBookImportErrorReportView.as_view(), name='admin-book-import-errors'),
 
     # Categories
     path('categories/', AdminCategoryListCreateView.as_view(), name='admin-category-list-create'),

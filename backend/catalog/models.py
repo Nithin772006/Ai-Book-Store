@@ -1,5 +1,7 @@
 import hashlib
+import uuid
 from decimal import Decimal
+from django.conf import settings
 from django.db import models
 from django.core.exceptions import ValidationError
 from django.core.validators import MinValueValidator
@@ -298,3 +300,83 @@ class BookSummary(models.Model):
     def is_valid_for(self, book_instance):
         """Checks whether the cached summary is still valid for current book metadata."""
         return self.source_fingerprint == book_instance.get_source_fingerprint()
+
+
+class ImportJob(models.Model):
+    """
+    Tracks bulk book import jobs executed by staff members.
+    Records file metadata, processing status, validation results, and execution counts.
+    """
+    STATUS_PENDING = 'pending'
+    STATUS_VALIDATED = 'validated'
+    STATUS_PROCESSING = 'processing'
+    STATUS_COMPLETED = 'completed'
+    STATUS_FAILED = 'failed'
+    STATUS_CANCELLED = 'cancelled'
+
+    STATUS_CHOICES = [
+        (STATUS_PENDING, 'Pending Validation'),
+        (STATUS_VALIDATED, 'Validated / Ready'),
+        (STATUS_PROCESSING, 'Processing'),
+        (STATUS_COMPLETED, 'Completed'),
+        (STATUS_FAILED, 'Failed'),
+        (STATUS_CANCELLED, 'Cancelled'),
+    ]
+
+    CONFLICT_SKIP = 'skip'
+    CONFLICT_UPDATE = 'update'
+    CONFLICT_CHOICES = [
+        (CONFLICT_SKIP, 'Skip Existing (Create New Only)'),
+        (CONFLICT_UPDATE, 'Update Existing Records'),
+    ]
+
+    job_id = models.UUIDField(default=uuid.uuid4, unique=True, editable=False, db_index=True)
+    created_by = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name='book_import_jobs',
+        help_text="Staff curator who initiated this import."
+    )
+    filename = models.CharField(max_length=255)
+    file_type = models.CharField(max_length=10, default='csv')
+    status = models.CharField(max_length=20, choices=STATUS_CHOICES, default=STATUS_PENDING, db_index=True)
+
+    total_rows = models.PositiveIntegerField(default=0)
+    valid_rows_count = models.PositiveIntegerField(default=0)
+    warning_rows_count = models.PositiveIntegerField(default=0)
+    invalid_rows_count = models.PositiveIntegerField(default=0)
+    conflict_rows_count = models.PositiveIntegerField(default=0)
+
+    created_count = models.PositiveIntegerField(default=0)
+    updated_count = models.PositiveIntegerField(default=0)
+    skipped_count = models.PositiveIntegerField(default=0)
+    failed_count = models.PositiveIntegerField(default=0)
+
+    conflict_mode = models.CharField(max_length=20, choices=CONFLICT_CHOICES, default=CONFLICT_SKIP)
+    create_missing_categories = models.BooleanField(default=False)
+
+    column_mapping = models.JSONField(default=dict, blank=True)
+    raw_headers = models.JSONField(default=list, blank=True)
+    sample_rows = models.JSONField(default=list, blank=True)
+    parsed_rows = models.JSONField(default=list, blank=True)
+    validation_summary = models.JSONField(default=dict, blank=True)
+    error_summary = models.JSONField(default=list, blank=True)
+
+    has_zip_covers = models.BooleanField(default=False)
+    zip_extracted_path = models.CharField(max_length=500, blank=True, default='')
+
+    idempotency_key = models.CharField(max_length=128, blank=True, null=True, db_index=True)
+
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+    completed_at = models.DateTimeField(null=True, blank=True)
+
+    class Meta:
+        verbose_name = "Book Import Job"
+        verbose_name_plural = "Book Import Jobs"
+        ordering = ['-created_at']
+
+    def __str__(self):
+        return f"ImportJob {self.job_id} ({self.filename}) - {self.status}"

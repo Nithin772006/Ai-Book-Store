@@ -3,6 +3,7 @@ import { NavLink, Outlet, useNavigate } from 'react-router-dom';
 import {
   LayoutDashboard,
   BookOpen,
+  UploadCloud,
   FolderTree,
   ShoppingBag,
   Users,
@@ -18,6 +19,7 @@ import { useAdminAuth } from '../context/AdminAuthContext';
 const NAV_ITEMS = [
   { path: '/dashboard', label: 'Dashboard', icon: LayoutDashboard },
   { path: '/books', label: 'Books', icon: BookOpen },
+  { path: '/books/import', label: 'Import Books', icon: UploadCloud },
   { path: '/categories', label: 'Categories', icon: FolderTree },
   { path: '/orders', label: 'Orders', icon: ShoppingBag },
   { path: '/customers', label: 'Customers', icon: Users },

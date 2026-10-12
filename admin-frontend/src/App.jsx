@@ -14,6 +14,7 @@ import OrderDetailPage from './pages/OrderDetailPage';
 import CustomersPage from './pages/CustomersPage';
 import SubscribersPage from './pages/SubscribersPage';
 import SettingsPage from './pages/SettingsPage';
+import ImportBooksPage from './pages/ImportBooksPage';
 
 function App() {
   return (
@@ -34,6 +35,7 @@ function App() {
             <Route path="/" element={<Navigate to="/dashboard" replace />} />
             <Route path="/dashboard" element={<DashboardPage />} />
             <Route path="/books" element={<BooksPage />} />
+            <Route path="/books/import" element={<ImportBooksPage />} />
             <Route path="/books/new" element={<BookFormPage />} />
             <Route path="/books/:id/edit" element={<BookFormPage />} />
             <Route path="/categories" element={<CategoriesPage />} />

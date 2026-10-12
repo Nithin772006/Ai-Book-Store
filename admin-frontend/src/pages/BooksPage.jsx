@@ -11,6 +11,7 @@ import {
   RefreshCw,
   ChevronLeft,
   ChevronRight,
+  UploadCloud,
 } from 'lucide-react';
 import { getAdminBooks, getAdminCategories, updateAdminBook, deleteAdminBook } from '../api/admin';
 import StatusBadge from '../components/StatusBadge';
@@ -145,10 +146,16 @@ export const BooksPage = () => {
             Audit inventory, publish editions, manage prices, and update cover imagery.
           </p>
         </div>
-        <Link to="/books/new" className="admin-btn admin-btn-primary">
-          <Plus size={16} />
-          <span>Add New Volume</span>
-        </Link>
+        <div style={{ display: 'flex', gap: '0.75rem' }}>
+          <Link to="/books/import" className="admin-btn admin-btn-secondary">
+            <UploadCloud size={16} />
+            <span>Import Books</span>
+          </Link>
+          <Link to="/books/new" className="admin-btn admin-btn-primary">
+            <Plus size={16} />
+            <span>Add New Volume</span>
+          </Link>
+        </div>
       </div>
 
       {/* Notifications */}
