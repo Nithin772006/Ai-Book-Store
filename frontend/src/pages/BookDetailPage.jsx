@@ -1,20 +1,38 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { useParams, Link } from 'react-router-dom';
+import { useParams, Link, useNavigate, useLocation } from 'react-router-dom';
 import gsap from 'gsap';
 import { useGSAP } from '@gsap/react';
-import { getBookById } from '../api/books';
+import { getBookById, getBookAiSummary, getRelatedBooks } from '../api/books';
+import { useAuth } from '../context/useAuth';
+import { useCart } from '../context/useCart';
 import Button from '../components/Button';
 import LoadingState from '../components/LoadingState';
 import ErrorState from '../components/ErrorState';
+import BookGrid from '../components/BookGrid';
 
 gsap.registerPlugin(useGSAP);
 
 export default function BookDetailPage() {
   const { id } = useParams();
+  const navigate = useNavigate();
+  const location = useLocation();
+  const { isAuthenticated } = useAuth();
+  const { addItem } = useCart();
+
   const [book, setBook] = useState(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
-  const [cartNotice, setCartNotice] = useState(false);
+  const [quantity, setQuantity] = useState(1);
+  const [addingToCart, setAddingToCart] = useState(false);
+  const [cartFeedback, setCartFeedback] = useState(null);
+
+  // Phase 7: Groq AI Summary state
+  const [aiSummary, setAiSummary] = useState(null);
+  const [aiLoading, setAiLoading] = useState(false);
+  const [aiError, setAiError] = useState(null);
+
+  // Phase 8: Related books recommendation state
+  const [relatedBooks, setRelatedBooks] = useState([]);
 
   const containerRef = useRef(null);
 
@@ -23,7 +41,12 @@ export default function BookDetailPage() {
     setPrevId(id);
     setLoading(true);
     setError(null);
-    setCartNotice(false);
+    setQuantity(1);
+    setCartFeedback(null);
+    setAiSummary(null);
+    setAiLoading(false);
+    setAiError(null);
+    setRelatedBooks([]);
   }
 
   useEffect(() => {
@@ -44,6 +67,16 @@ export default function BookDetailPage() {
       })
       .finally(() => {
         setLoading(false);
+      });
+
+    // Fetch related volumes (Phase 8)
+    getRelatedBooks(id, 4, controller.signal)
+      .then((data) => {
+        setRelatedBooks(data || []);
+      })
+      .catch((err) => {
+        if (err.name === 'CanceledError' || err.code === 'ERR_CANCELED') return;
+        console.warn('Could not load related books:', err);
       });
 
     return () => controller.abort();
@@ -101,6 +134,26 @@ export default function BookDetailPage() {
     : null;
 
   const isOutOfStock = book.stock_quantity === 0;
+
+  const handleGenerateAiSummary = async () => {
+    if (aiLoading) return;
+    setAiLoading(true);
+    setAiError(null);
+
+    try {
+      const data = await getBookAiSummary(book.id);
+      setAiSummary(data);
+    } catch (err) {
+      if (err.name === 'CanceledError' || err.code === 'ERR_CANCELED') return;
+      console.error('AI summary error:', err);
+      const serverMsg = err.response?.data?.error;
+      setAiError(
+        serverMsg || 'Unable to generate summary at this time. Please check the backend connection and try again.'
+      );
+    } finally {
+      setAiLoading(false);
+    }
+  };
 
   return (
     <div ref={containerRef} className="editorial-detail-page store-container">
@@ -211,14 +264,70 @@ export default function BookDetailPage() {
               </span>
             </div>
 
-            {/* Cart Button Action (Phase 3 -> 4 Bridge) */}
+            {/* Quantity and Cart Button Action */}
             <div className="detail-action-cluster">
+              {!isOutOfStock && (
+                <div className="detail-quantity-container">
+                  <span className="detail-qty-label">Quantity</span>
+                  <div className="quantity-stepper" role="group" aria-label="Book quantity">
+                    <button
+                      type="button"
+                      className="stepper-btn stepper-btn-minus"
+                      onClick={() => setQuantity((q) => Math.max(1, q - 1))}
+                      disabled={quantity <= 1 || addingToCart}
+                      aria-label="Decrease quantity"
+                      id="btn-detail-dec"
+                    >
+                      −
+                    </button>
+                    <span className="stepper-value" id="detail-qty-val">
+                      {quantity}
+                    </span>
+                    <button
+                      type="button"
+                      className="stepper-btn stepper-btn-plus"
+                      onClick={() => setQuantity((q) => Math.min(book.stock_quantity, q + 1))}
+                      disabled={quantity >= book.stock_quantity || addingToCart}
+                      aria-label="Increase quantity"
+                      id="btn-detail-inc"
+                    >
+                      +
+                    </button>
+                  </div>
+                </div>
+              )}
+
               <Button
                 variant="burgundy"
                 size="lg"
-                onClick={() => setCartNotice(true)}
+                magnetic={!isOutOfStock}
+                onClick={async () => {
+                  if (!isAuthenticated) {
+                    navigate('/login', { state: { from: location } });
+                    return;
+                  }
+                  if (isOutOfStock || addingToCart) return;
+
+                  setAddingToCart(true);
+                  setCartFeedback(null);
+                  const result = await addItem(book.id, quantity);
+                  setAddingToCart(false);
+
+                  if (result.success) {
+                    setCartFeedback({
+                      type: 'success',
+                      message: `${quantity} ${quantity === 1 ? 'copy' : 'copies'} added to your reading bag.`,
+                    });
+                  } else {
+                    setCartFeedback({
+                      type: 'error',
+                      message: result.error || 'Failed to add volume to your bag.',
+                    });
+                  }
+                }}
+                disabled={isOutOfStock || addingToCart}
                 className="detail-add-bag-btn"
-                id="btn-add-to-cart-preview"
+                id="btn-add-to-cart"
                 iconLeft={
                   <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
                     <path d="M6 2L3 6v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2V6l-3-4z" />
@@ -227,7 +336,11 @@ export default function BookDetailPage() {
                   </svg>
                 }
               >
-                Add to Bag
+                {isOutOfStock
+                  ? 'Out of Stock'
+                  : addingToCart
+                  ? 'Adding to Bag...'
+                  : 'Add to Bag'}
               </Button>
 
               <Button
@@ -240,13 +353,34 @@ export default function BookDetailPage() {
               </Button>
             </div>
 
-            {cartNotice && (
-              <div className="phase-cart-notice-banner" role="status">
-                <span className="notice-icon">ℹ️</span>
-                <div className="notice-text">
-                  <strong>Phase 3 Scope:</strong> Cart persistence, user sessions, and checkout flows
-                  are introduced in <em>Phase 4</em>. Catalogue browsing is read-only.
+            {/* Cart Operation Feedback */}
+            {cartFeedback && (
+              <div
+                className={`detail-cart-feedback-banner ${
+                  cartFeedback.type === 'success' ? 'feedback-success' : 'feedback-error'
+                }`}
+                role="status"
+                id="detail-cart-feedback"
+              >
+                <div className="feedback-content">
+                  <span className="feedback-icon">
+                    {cartFeedback.type === 'success' ? '✓' : '⚠️'}
+                  </span>
+                  <span className="feedback-message">{cartFeedback.message}</span>
                 </div>
+                {cartFeedback.type === 'success' && (
+                  <Link to="/cart" className="feedback-view-cart-link" id="link-feedback-view-bag">
+                    View Reading Bag →
+                  </Link>
+                )}
+                <button
+                  type="button"
+                  onClick={() => setCartFeedback(null)}
+                  className="feedback-dismiss-btn"
+                  aria-label="Dismiss feedback"
+                >
+                  ✕
+                </button>
               </div>
             )}
           </div>
@@ -255,9 +389,108 @@ export default function BookDetailPage() {
           <section className="detail-synopsis-section detail-anim-fade">
             <h2 className="detail-section-subhead">About This Edition</h2>
             <div className="detail-prose-description">
-              {book.description.split('\n\n').map((para, i) => (
+              {(book.description || 'No formal synopsis catalogued for this edition.').split('\n\n').map((para, i) => (
                 <p key={i}>{para}</p>
               ))}
+            </div>
+          </section>
+
+          {/* AETHERIUM AI Literary Synopsis (Phase 7 - Groq) */}
+          <section className="detail-ai-summary-section detail-anim-fade" aria-labelledby="ai-summary-heading">
+            <div className="ai-summary-card">
+              <div className="ai-summary-header">
+                <div className="ai-summary-title-cluster">
+                  <span className="ai-sparkle-icon" aria-hidden="true">✦</span>
+                  <h2 id="ai-summary-heading" className="ai-summary-title">
+                    AETHERIUM Intelligence Synopsis
+                  </h2>
+                </div>
+                <div className="ai-summary-meta-badges">
+                  <span className="ai-provider-badge">
+                    Groq Intelligence
+                  </span>
+                  {aiSummary?.cached && (
+                    <span className="ai-cached-badge" title="Retrieved instantaneously from archive cache">
+                      Archived
+                    </span>
+                  )}
+                </div>
+              </div>
+
+              <p className="ai-summary-disclaimer">
+                Synthesized on demand from verified catalogue records to assist your reading acquisition.
+              </p>
+
+              {/* Initial Action State */}
+              {!aiSummary && !aiLoading && !aiError && (
+                <div className="ai-summary-cta-box">
+                  <p className="ai-summary-prompt-text">
+                    {book.description && book.description.trim().length >= 15
+                      ? 'Request an AI-generated editorial synopsis synthesizing core themes and catalogue notes.'
+                      : 'Catalogue details for this edition are brief. The AI summary will synthesize what is known from publisher and title records.'}
+                  </p>
+                  <button
+                    type="button"
+                    onClick={handleGenerateAiSummary}
+                    className="btn-editorial-ai-generate"
+                    id="btn-generate-ai-summary"
+                  >
+                    <span className="btn-ai-icon" aria-hidden="true">✦</span>
+                    <span>Generate AI Summary</span>
+                  </button>
+                </div>
+              )}
+
+              {/* Loading State */}
+              {aiLoading && (
+                <div className="ai-summary-loading-box" role="status" aria-live="polite">
+                  <div className="ai-summary-spinner" />
+                  <p className="ai-summary-loading-text">
+                    Consulting AETHERIUM literary intelligence via Groq...
+                  </p>
+                </div>
+              )}
+
+              {/* Error State */}
+              {aiError && !aiLoading && (
+                <div className="ai-summary-error-box" role="alert">
+                  <div className="ai-summary-error-content">
+                    <span className="ai-error-icon" aria-hidden="true">⚠️</span>
+                    <p className="ai-error-message">{aiError}</p>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={handleGenerateAiSummary}
+                    className="btn-editorial-ai-retry"
+                    id="btn-retry-ai-summary"
+                  >
+                    Retry Generation
+                  </button>
+                </div>
+              )}
+
+              {/* Generated Result State */}
+              {aiSummary && !aiLoading && (
+                <div className="ai-summary-body" aria-live="polite">
+                  <div className="ai-summary-prose">
+                    {aiSummary.summary.split('\n\n').map((paragraph, index) => (
+                      <p key={index}>{paragraph}</p>
+                    ))}
+                  </div>
+                  <div className="ai-summary-footer">
+                    <span className="ai-summary-colophon">
+                      AI-generated summary based on available catalogue metadata • Powered by Groq
+                    </span>
+                    <Link
+                      to={`/reading-assistant?bookId=${book.id}`}
+                      className="ai-summary-discuss-link"
+                      id="link-discuss-volume-with-assistant"
+                    >
+                      ✦ Discuss with AI Assistant →
+                    </Link>
+                  </div>
+                </div>
+              )}
             </div>
           </section>
 
@@ -293,6 +526,23 @@ export default function BookDetailPage() {
           </section>
         </div>
       </div>
+
+      {/* You May Also Like / Related Volumes (Phase 8) */}
+      {relatedBooks.length > 0 && (
+        <section className="detail-related-section detail-anim-fade" aria-labelledby="related-volumes-heading">
+          <div className="related-section-header">
+            <div className="related-kicker-cluster">
+              <span className="related-crest-sparkle">✦</span>
+              <span className="related-kicker">CURATED COMPANIONS</span>
+            </div>
+            <h2 id="related-volumes-heading" className="related-headline">You May Also Like</h2>
+            <p className="related-subtitle">
+              Other distinguished volumes sharing disciplinary themes or authorship with {book.title}.
+            </p>
+          </div>
+          <BookGrid books={relatedBooks} />
+        </section>
+      )}
     </div>
   );
 }

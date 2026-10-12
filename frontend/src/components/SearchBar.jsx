@@ -69,6 +69,7 @@ export default function SearchBar({
             className="search-clear-btn"
             aria-label="Clear search query"
             title="Clear search"
+            id="btn-search-clear"
           >
             ✕
           </button>

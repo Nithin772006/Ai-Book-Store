@@ -105,3 +105,69 @@ export const getNewArrivals = async (limit = 6, signal = null) => {
   const data = await getBooks({ new_arrival: true, page_size: limit }, signal);
   return data.results || [];
 };
+
+/**
+ * Fetch or generate an AI summary for a book (Phase 7 - Groq).
+ * Calls POST /api/ai/books/<id>/summary/ on demand.
+ * @param {number|string} id - Book ID
+ * @param {AbortSignal} [signal]
+ * @returns {Promise<{book_id: number, title: string, summary: string, cached: boolean, model: string}>}
+ */
+export const getBookAiSummary = async (id, signal = null) => {
+  const response = await apiClient.post(`/api/ai/books/${id}/summary/`, {}, { signal });
+  return response.data;
+};
+
+/**
+ * Fetch related books for a specific volume (Phase 8).
+ * @param {number|string} id - Book ID
+ * @param {number} [limit=4] - Number of related books
+ * @param {AbortSignal} [signal]
+ * @returns {Promise<Array>}
+ */
+export const getRelatedBooks = async (id, limit = 4, signal = null) => {
+  const response = await apiClient.get(`/api/books/${id}/related/`, {
+    params: { limit },
+    signal,
+  });
+  return response.data || [];
+};
+
+/**
+ * Fetch personalized or curated recommendations (Phase 8).
+ * @param {number} [limit=8]
+ * @param {AbortSignal} [signal]
+ * @returns {Promise<{results: Array, count: number, personalized: boolean}>}
+ */
+export const getRecommendations = async (limit = 8, signal = null) => {
+  const response = await apiClient.get('/api/recommendations/', {
+    params: { limit },
+    signal,
+  });
+  return response.data;
+};
+
+/**
+ * Send a message to the AETHERIUM AI Reading Assistant (Phase 8).
+ * @param {Object} payload
+ * @param {string} payload.message - The reader's question or prompt
+ * @param {number|string} [payload.bookId] - Optional selected book ID
+ * @param {Array} [payload.history] - Optional conversation history
+ * @param {AbortSignal} [signal]
+ * @returns {Promise<{reply: string, book: Object|null, recommended_books: Array, model: string}>}
+ */
+export const askReadingAssistant = async (
+  { message, bookId = null, history = [] },
+  signal = null
+) => {
+  const response = await apiClient.post(
+    '/api/ai/reading-assistant/',
+    {
+      message,
+      book_id: bookId,
+      history,
+    },
+    { signal }
+  );
+  return response.data;
+};

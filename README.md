@@ -1,10 +1,18 @@
-# AI Online Bookstore
+# AETHERIUM — Curated Bookstore
 
-An AI-Powered Online Bookstore built with **React (Vite)** on the frontend and **Django REST Framework** on the backend.
+An AI-Powered Online Bookstore built with **React (Vite)** on the frontend and **Django REST Framework** on the backend, featuring literary AI intelligence powered by **Groq**.
 
 ---
 
-## Project Status: Phase 2 (Database Models, Catalog & Django Admin)
+## Project Status: Phase 7 (AETHERIUM Brand Migration + Groq AI Book Summaries)
+
+Phase 7 completes the brand migration to **AETHERIUM** and establishes high-performance AI literary synopses powered exclusively by **Groq**:
+- **Brand Migration**: Rebranded customer-facing storefront to **AETHERIUM** across navbar, hero, footer, login, registration, cart, checkout, order history, and metadata.
+- **Groq AI Provider**: Integrated the official `groq` Python SDK with configurable model identifier (`GROQ_MODEL=llama-3.3-70b-versatile`).
+- **Secure Backend Integration**: Groq API credentials are strictly confined to backend environment variables and never exposed to the client.
+- **On-Demand AI Book Summaries**: Endpoint `POST /api/ai/books/<book_id>/summary/` synthesizes concise editorial overviews strictly from catalogue records.
+- **Fingerprinted Database Caching**: `BookSummary` model caches generated synopses using a SHA-256 fingerprint of the book's metadata (`title`, `author`, `category`, `publisher`, `description`), bypassing redundant LLM calls until metadata changes.
+- **Editorial UI**: Interactive AI summary card on the book detail page with loading spinners, archived cache badges, and error recovery.
 
 Phase 2 builds upon the Phase 1 foundation by establishing the core database schema:
 - **`Category` & `Book` Models** with strict validations, unique slug generation, and database constraints.
@@ -246,10 +254,73 @@ The React application uses React Router to provide clean navigation with URL per
 
 ---
 
-## Next Steps (Phase 4)
+## Phase 7: Groq AI Book Summaries Configuration
 
-- User authentication (registration, login, JWT / session management).
-- Persistent cart state and cart badge counter.
-- Wishlist functionality.
-- Checkout flow and order placement.
+### 1. Environment Setup
+
+1. Sign up for a free Groq account and create an API key at [https://console.groq.com/keys](https://console.groq.com/keys).
+2. Create or open `backend/.env` (which is ignored by Git):
+   ```ini
+   DJANGO_SECRET_KEY=your-dev-secret-key
+   DJANGO_DEBUG=True
+   GROQ_API_KEY=gsk_your_actual_groq_api_key_here
+   GROQ_MODEL=llama-3.3-70b-versatile
+   GROQ_TIMEOUT=25.0
+   ```
+3. Restart the Django development server to pick up new environment variables.
+
+### 2. Testing AI Summaries
+
+- **Endpoint**: `POST /api/ai/books/<book_id>/summary/`
+- **UI**: Navigate to any book detail page (`http://127.0.0.1:5173/books/1`) and click **Generate AI Summary** in the *AETHERIUM Intelligence Synopsis* section.
+- **Cache**: Re-requesting the summary will instantaneously serve the cached version with the `Archived` badge. Updating the book's details in Django admin invalidates the cache automatically.
+
+---
+
+## Phase 8: Recommendations & AI Reading Assistant
+
+Phase 8 introduces transparent catalogue-based recommendations and an interactive, Groq-powered conversational AI Reading Assistant.
+
+### 1. Intelligent Recommendation System
+
+- **Signals**:
+  - Related volumes scored on category (+10), author (+8), publisher (+3), and promotional flags (+1-2).
+  - Personalized recommendations analyze authenticated customer order history from `OrderItem`, boosting preferred disciplines and favorite authors while excluding already-acquired titles.
+  - Anonymous visitors receive curated catalogue highlights (staff selections, bestsellers, new arrivals).
+- **Endpoints**:
+  - `GET /api/books/<id>/related/?limit=4`: Contextual companions for a specific volume.
+  - `GET /api/recommendations/?limit=8`: Personalized customer recommendations or curated highlights (`{ "results": [...], "personalized": bool, "count": int }`).
+
+### 2. AETHERIUM AI Reading Assistant
+
+- **Capabilities**:
+  - Inquiring about specific volumes using verified catalogue records.
+  - Catalogue-grounded discovery: Candidate books are retrieved directly from the database and provided as structured context. Groq selects and explains matches, and returned book IDs are strictly validated before presentation.
+  - Explaining literary terminology, historical movements, and themes.
+  - Reading salon discussion questions and reading guidance.
+  - Bounded multi-turn conversational history.
+- **Endpoint**: `POST /api/ai/reading-assistant/`
+- **Request Format**:
+  ```json
+  {
+    "message": "Can you suggest an atmospheric gothic mystery?",
+    "book_id": 1,
+    "history": [
+      { "role": "user", "content": "Hello" },
+      { "role": "assistant", "content": "Greetings..." }
+    ]
+  }
+  ```
+- **Response Format**:
+  ```json
+  {
+    "reply": "I recommend exploring The Name of the Rose by Umberto Eco...",
+    "book": null,
+    "recommended_books": [ ...verified book objects... ],
+    "model": "llama-3.3-70b-versatile"
+  }
+  ```
+- **UI Route**: `/reading-assistant` (linked in Navbar, Homepage, Book Detail, and Customer Account).
+- **Known Limitations**:
+  - The assistant possesses knowledge of catalogue metadata only (synopses, author, discipline, publisher). It will honestly decline to reveal specific chapter plots or uncatalogued endings.
 

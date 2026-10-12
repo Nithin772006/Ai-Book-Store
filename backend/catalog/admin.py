@@ -1,5 +1,19 @@
 from django.contrib import admin
-from .models import Category, Book
+from .models import Category, Book, BookSummary
+
+
+class BookSummaryInline(admin.StackedInline):
+    model = BookSummary
+    extra = 0
+    readonly_fields = ('source_fingerprint', 'model_name', 'created_at', 'updated_at')
+    can_delete = True
+
+
+@admin.register(BookSummary)
+class BookSummaryAdmin(admin.ModelAdmin):
+    list_display = ('book', 'model_name', 'source_fingerprint', 'updated_at')
+    search_fields = ('book__title', 'summary_text')
+    readonly_fields = ('source_fingerprint', 'created_at', 'updated_at')
 
 
 @admin.register(Category)
@@ -44,6 +58,7 @@ class BookAdmin(admin.ModelAdmin):
     readonly_fields = ('created_at', 'updated_at')
     ordering = ('-created_at',)
     list_per_page = 25
+    inlines = [BookSummaryInline]
 
     fieldsets = (
         ('Basic Information', {

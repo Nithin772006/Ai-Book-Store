@@ -1,5 +1,5 @@
-import React, { useState, useEffect, useRef } from 'react';
-import { useParams, Link, useSearchParams } from 'react-router-dom';
+import React, { useState, useEffect, useRef, useCallback } from 'react';
+import { useParams, Link, useSearchParams, useNavigate } from 'react-router-dom';
 import gsap from 'gsap';
 import { useGSAP } from '@gsap/react';
 import { getCategoryBooks, getCategories } from '../api/books';
@@ -15,6 +15,7 @@ gsap.registerPlugin(useGSAP);
 export default function CategoryPage() {
   const { slug } = useParams();
   const [searchParams, setSearchParams] = useSearchParams();
+  const navigate = useNavigate();
 
   const searchQuery = searchParams.get('search') || '';
   const selectedOrdering = searchParams.get('ordering') || '-created_at';
@@ -36,7 +37,8 @@ export default function CategoryPage() {
     getCategories()
       .then((cats) => {
         if (!isMounted) return;
-        const currentCat = cats.find((c) => c.slug === slug);
+        const list = Array.isArray(cats) ? cats : (cats?.results || []);
+        const currentCat = list.find((c) => c.slug === slug);
         if (currentCat) {
           setCategoryInfo(currentCat);
         }
@@ -63,6 +65,14 @@ export default function CategoryPage() {
     });
   }, [setSearchParams]);
 
+  const handleSearch = useCallback((val) => {
+    updateParams({ search: val });
+  }, [updateParams]);
+
+  const handlePageChange = useCallback((page) => {
+    updateParams({ page });
+  }, [updateParams]);
+
   const [retryTrigger, setRetryTrigger] = useState(0);
 
   useEffect(() => {
@@ -80,10 +90,13 @@ export default function CategoryPage() {
 
         const data = await getCategoryBooks(slug, params, controller.signal);
         if (!ignore) {
-          setBooks(data.results || []);
-          setTotalCount(data.count || 0);
-          setHasNext(Boolean(data.next));
-          setHasPrev(Boolean(data.previous));
+          const results = Array.isArray(data) ? data : (data?.results || []);
+          const count = typeof data?.count === 'number' ? data.count : results.length;
+          setBooks(results);
+          setTotalCount(count);
+          setHasNext(Boolean(data?.next));
+          setHasPrev(Boolean(data?.previous));
+          setError(null);
         }
       } catch (err) {
         if (!ignore && err.name !== 'CanceledError' && err.code !== 'ERR_CANCELED') {
@@ -162,7 +175,7 @@ export default function CategoryPage() {
         <div className="filter-search-container">
           <SearchBar
             initialValue={searchQuery}
-            onSearch={(val) => updateParams({ search: val })}
+            onSearch={handleSearch}
             placeholder={`Search within ${categoryInfo ? categoryInfo.name : 'this discipline'}...`}
           />
         </div>
@@ -204,6 +217,7 @@ export default function CategoryPage() {
                 setSearchParams(new URLSearchParams());
               }}
               className="editorial-reset-filters-btn"
+              id="btn-category-reset-filters"
             >
               Reset Filters
             </button>
@@ -234,7 +248,7 @@ export default function CategoryPage() {
             title="No Volumes Found in This Discipline"
             message="No books currently match your search or filter within this discipline."
             actionText="Browse Full Catalogue"
-            onAction={() => window.location.assign('/books')}
+            onAction={() => navigate('/books')}
           />
         )}
 
@@ -247,7 +261,7 @@ export default function CategoryPage() {
               pageSize={12}
               hasNext={hasNext}
               hasPrev={hasPrev}
-              onPageChange={(page) => updateParams({ page })}
+              onPageChange={handlePageChange}
             />
           </>
         )}

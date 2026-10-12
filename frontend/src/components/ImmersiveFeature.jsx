@@ -37,6 +37,19 @@ export default function ImmersiveFeature({
       ease: 'none',
     });
 
+    // Subtle scale and entrance on media window
+    gsap.from('.feature-media-window', {
+      scrollTrigger: {
+        trigger: containerRef.current,
+        start: 'top 78%',
+        toggleActions: 'play none none reverse',
+      },
+      opacity: 0,
+      scale: 0.96,
+      duration: 1.1,
+      ease: 'power3.out',
+    });
+
     // Stagger reveal on the burgundy content panel
     gsap.from('.feature-reveal-item', {
       scrollTrigger: {
@@ -101,6 +114,7 @@ export default function ImmersiveFeature({
                 to={ctaLink}
                 variant="outline"
                 size="md"
+                magnetic={true}
                 className="feature-outline-btn"
                 id="btn-immersive-feature-cta"
               >

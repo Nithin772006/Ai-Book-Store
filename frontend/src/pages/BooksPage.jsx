@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import gsap from 'gsap';
 import { useGSAP } from '@gsap/react';
@@ -41,7 +41,7 @@ export default function BooksPage() {
     let isMounted = true;
     getCategories()
       .then((data) => {
-        if (isMounted) setCategories(data || []);
+        if (isMounted) setCategories(Array.isArray(data) ? data : (data?.results || []));
       })
       .catch((err) => console.warn('Could not load categories in BooksPage:', err));
     return () => { isMounted = false; };
@@ -67,6 +67,14 @@ export default function BooksPage() {
     });
   }, [setSearchParams]);
 
+  const handleSearch = useCallback((val) => {
+    updateParams({ search: val });
+  }, [updateParams]);
+
+  const handlePageChange = useCallback((page) => {
+    updateParams({ page });
+  }, [updateParams]);
+
   const [retryTrigger, setRetryTrigger] = useState(0);
 
   // Fetch books matching current URL parameters
@@ -89,10 +97,13 @@ export default function BooksPage() {
 
         const data = await getBooks(params, controller.signal);
         if (!ignore) {
-          setBooks(data.results || []);
-          setTotalCount(data.count || 0);
-          setHasNext(Boolean(data.next));
-          setHasPrev(Boolean(data.previous));
+          const results = Array.isArray(data) ? data : (data?.results || []);
+          const count = typeof data?.count === 'number' ? data.count : results.length;
+          setBooks(results);
+          setTotalCount(count);
+          setHasNext(Boolean(data?.next));
+          setHasPrev(Boolean(data?.previous));
+          setError(null);
         }
       } catch (err) {
         if (!ignore && err.name !== 'CanceledError' && err.code !== 'ERR_CANCELED') {
@@ -182,7 +193,7 @@ export default function BooksPage() {
         <div className="filter-search-container">
           <SearchBar
             initialValue={searchQuery}
-            onSearch={(val) => updateParams({ search: val })}
+            onSearch={handleSearch}
             placeholder="Search by title, author, description, or ISBN..."
           />
         </div>
@@ -320,7 +331,7 @@ export default function BooksPage() {
               pageSize={12}
               hasNext={hasNext}
               hasPrev={hasPrev}
-              onPageChange={(page) => updateParams({ page })}
+              onPageChange={handlePageChange}
             />
           </>
         )}

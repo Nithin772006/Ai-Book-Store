@@ -10,6 +10,23 @@ import os
 # Build paths inside the project like this: BASE_DIR / 'subdir'.
 BASE_DIR = Path(__file__).resolve().parent.parent
 
+# Load local environment variables from .env if present (standard library, no extra dependencies)
+_env_file = BASE_DIR / '.env'
+if _env_file.exists():
+    try:
+        with open(_env_file, 'r', encoding='utf-8') as _f:
+            for _line in _f:
+                _line = _line.strip()
+                if not _line or _line.startswith('#') or '=' not in _line:
+                    continue
+                _k, _v = _line.split('=', 1)
+                _k = _k.strip()
+                _v = _v.strip().strip("'\"")
+                if _k and (_k not in os.environ or not os.environ[_k]):
+                    os.environ[_k] = _v
+    except Exception:
+        pass
+
 # SECURITY WARNING: keep the secret key used in production secret!
 SECRET_KEY = os.environ.get(
     'DJANGO_SECRET_KEY',
@@ -20,6 +37,11 @@ SECRET_KEY = os.environ.get(
 DEBUG = os.environ.get('DJANGO_DEBUG', 'True').lower() in ('true', '1', 'yes')
 
 ALLOWED_HOSTS = ['127.0.0.1', 'localhost']
+
+# Groq AI Provider Configuration (Phase 7 & 8)
+GROQ_API_KEY = os.environ.get('GROQ_API_KEY', '').strip().strip("'\"")
+GROQ_MODEL = os.environ.get('GROQ_MODEL', 'qwen/qwen3.8-27b').strip().strip("'\"") or 'qwen/qwen3.8-27b'
+GROQ_TIMEOUT = float(os.environ.get('GROQ_TIMEOUT', '25.0'))
 
 
 # Application definition
@@ -34,12 +56,15 @@ INSTALLED_APPS = [
 
     # Third-party packages
     'rest_framework',
+    'rest_framework.authtoken',
     'corsheaders',
 
     # Local applications
     'api.apps.ApiConfig',
     'catalog.apps.CatalogConfig',
     'accounts.apps.AccountsConfig',
+    'cart.apps.CartConfig',
+    'orders.apps.OrdersConfig',
     'newsletter.apps.NewsletterConfig',
 ]
 
@@ -135,6 +160,10 @@ DEFAULT_AUTO_FIELD = 'django.db.models.BigAutoField'
 
 # Django REST Framework Settings
 REST_FRAMEWORK = {
+    'DEFAULT_AUTHENTICATION_CLASSES': [
+        'rest_framework.authentication.TokenAuthentication',
+        'rest_framework.authentication.SessionAuthentication',
+    ],
     'DEFAULT_RENDERER_CLASSES': [
         'rest_framework.renderers.JSONRenderer',
         'rest_framework.renderers.BrowsableAPIRenderer',
@@ -144,14 +173,35 @@ REST_FRAMEWORK = {
     'DEFAULT_PERMISSION_CLASSES': [
         'rest_framework.permissions.AllowAny',
     ],
+    'DEFAULT_THROTTLE_RATES': {
+        'anon': '60/minute',
+        'user': '120/minute',
+        'ai_summary': '30/minute',
+        'ai_assistant': '30/minute',
+    },
 }
 
 
-# CORS Configuration
-# Restrict CORS origins strictly to local React development server
+# CORS & CSRF Configuration
+# Restrict CORS & CSRF origins strictly to local customer storefront (5173) and admin portal (5174)
 CORS_ALLOWED_ORIGINS = [
     'http://localhost:5173',
     'http://127.0.0.1:5173',
+    'http://localhost:5174',
+    'http://127.0.0.1:5174',
 ]
 
 CORS_ALLOW_CREDENTIALS = True
+
+CSRF_TRUSTED_ORIGINS = [
+    'http://localhost:5173',
+    'http://127.0.0.1:5173',
+    'http://localhost:5174',
+    'http://127.0.0.1:5174',
+]
+
+# Ensure frontend client can read CSRF token cookie for safe POST requests
+CSRF_COOKIE_HTTPONLY = False
+CSRF_COOKIE_SAMESITE = 'Lax'
+SESSION_COOKIE_SAMESITE = 'Lax'
+SESSION_COOKIE_HTTPONLY = True

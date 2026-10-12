@@ -1,11 +1,36 @@
-import React from 'react';
+import React, { useRef } from 'react';
 import { Link } from 'react-router-dom';
+import gsap from 'gsap';
+import { useGSAP } from '@gsap/react';
+import { ScrollTrigger } from 'gsap/ScrollTrigger';
+
+gsap.registerPlugin(useGSAP, ScrollTrigger);
 
 const CURRENT_YEAR = new Date().getFullYear();
 
 export default function Footer() {
+  const footerRef = useRef(null);
+
+  useGSAP(() => {
+    const prefersReducedMotion = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+    if (prefersReducedMotion) return;
+
+    gsap.from('.footer-col', {
+      scrollTrigger: {
+        trigger: footerRef.current,
+        start: 'top 88%',
+        toggleActions: 'play none none none',
+      },
+      opacity: 0,
+      y: 20,
+      stagger: 0.1,
+      duration: 0.8,
+      ease: 'power3.out',
+    });
+  }, { scope: footerRef });
+
   return (
-    <footer className="editorial-footer">
+    <footer ref={footerRef} className="editorial-footer">
       <div className="store-container footer-content-grid">
         {/* Brand Column */}
         <div className="footer-col brand-editorial-col">
@@ -18,7 +43,7 @@ export default function Footer() {
               <path d="M16 8v9" />
               <path d="M4 4h16" />
             </svg>
-            <span className="footer-brand-title">EX LIBRIS</span>
+            <span className="footer-brand-title">AETHERIUM</span>
           </div>
 
           <p className="footer-statement">
@@ -83,7 +108,7 @@ export default function Footer() {
       <div className="footer-colophon-bar">
         <div className="store-container colophon-inner">
           <p className="colophon-text">
-            © {CURRENT_YEAR} EX LIBRIS BOOKSTORE. Built with Django REST Framework & React.
+            © {CURRENT_YEAR} AETHERIUM BOOKSTORE. Built with Django REST Framework & React.
           </p>
           <div className="colophon-links">
             <span className="colophon-note">Major Project Capstone Demonstration</span>

@@ -17,17 +17,21 @@ staticfiles/
 # Node / React
 node_modules/
 frontend/node_modules/
+admin-frontend/node_modules/
 dist/
 frontend/dist/
+admin-frontend/dist/
 dist-ssr/
 *.local
 
 # Environment variables
 .env
 frontend/.env
+admin-frontend/.env
 backend/.env
 !.env.example
 !frontend/.env.example
+!admin-frontend/.env.example
 !backend/.env.example
 
 # IDE / Editor

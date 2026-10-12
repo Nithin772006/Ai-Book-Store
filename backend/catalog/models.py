@@ -1,3 +1,4 @@
+import hashlib
 from decimal import Decimal
 from django.db import models
 from django.core.exceptions import ValidationError
@@ -240,3 +241,60 @@ class Book(models.Model):
 
         self.clean()
         super().save(*args, **kwargs)
+
+    def get_source_fingerprint(self):
+        """
+        Computes a SHA-256 fingerprint of the book's core metadata:
+        title, author, category, publisher, and catalogue description.
+        If any of these change, the fingerprint invalidates, triggering a fresh summary.
+        """
+        cat_name = self.category.name if self.category_id else ""
+        content = f"{self.title}|{self.author}|{cat_name}|{self.publisher or ''}|{self.description or ''}"
+        return hashlib.sha256(content.strip().encode('utf-8')).hexdigest()
+
+
+class BookSummary(models.Model):
+    """
+    AI-generated summary cache for a book (Phase 7).
+    Preserves catalogue description without modification.
+    Stores generation metadata and fingerprint to avoid redundant Groq LLM calls.
+    """
+    book = models.OneToOneField(
+        Book,
+        on_delete=models.CASCADE,
+        related_name="ai_summary_cache",
+        help_text="The book this AI summary was generated for."
+    )
+    summary_text = models.TextField(
+        help_text="AI-generated summary based on catalogue metadata."
+    )
+    source_fingerprint = models.CharField(
+        max_length=64,
+        db_index=True,
+        help_text="SHA-256 fingerprint of source metadata at the time of generation."
+    )
+    model_name = models.CharField(
+        max_length=100,
+        default="llama-3.3-70b-versatile",
+        help_text="The Groq model used to generate this summary."
+    )
+    created_at = models.DateTimeField(
+        auto_now_add=True,
+        help_text="Timestamp when the summary was generated."
+    )
+    updated_at = models.DateTimeField(
+        auto_now=True,
+        help_text="Timestamp when the summary was last updated."
+    )
+
+    class Meta:
+        verbose_name = "Book AI Summary"
+        verbose_name_plural = "Book AI Summaries"
+        ordering = ['-updated_at']
+
+    def __str__(self):
+        return f"AI Summary for {self.book.title} ({self.model_name})"
+
+    def is_valid_for(self, book_instance):
+        """Checks whether the cached summary is still valid for current book metadata."""
+        return self.source_fingerprint == book_instance.get_source_fingerprint()

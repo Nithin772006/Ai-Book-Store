@@ -111,6 +111,14 @@ export default function HeroSection({
     setVideoFailed(true);
   };
 
+  const handleSecondaryClick = (e) => {
+    const el = document.getElementById('curated-selections');
+    if (el) {
+      e.preventDefault();
+      el.scrollIntoView({ behavior: 'smooth' });
+    }
+  };
+
   return (
     <section ref={heroRef} className="cinematic-hero-section" aria-label="Bookstore Introduction">
       {/* Background Media Container */}
@@ -157,7 +165,11 @@ export default function HeroSection({
           <h1 className="hero-headline-serif">
             {headline.split('\n').map((line, idx) => (
               <span key={idx} className="headline-line-block">
-                {line}
+                {idx === 1 ? (
+                  <span className="headline-word-accent">{line}</span>
+                ) : (
+                  line
+                )}
               </span>
             ))}
           </h1>
@@ -171,6 +183,7 @@ export default function HeroSection({
               to={primaryCtaLink}
               variant="burgundy"
               size="lg"
+              magnetic={true}
               className="hero-primary-btn"
               id="hero-explore-btn"
             >
@@ -180,6 +193,7 @@ export default function HeroSection({
             {secondaryCtaText && (
               <Button
                 to={secondaryCtaLink}
+                onClick={handleSecondaryClick}
                 variant="outline"
                 size="lg"
                 className="hero-secondary-btn"

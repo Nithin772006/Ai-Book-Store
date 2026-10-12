@@ -1,20 +1,28 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { Link } from 'react-router-dom';
-import { getCategories, getBooks } from '../api/books';
+import gsap from 'gsap';
+import { useGSAP } from '@gsap/react';
+import { ScrollTrigger } from 'gsap/ScrollTrigger';
+import { getCategories, getBooks, getRecommendations } from '../api/books';
 import HeroSection from '../components/HeroSection';
 import ImmersiveFeature from '../components/ImmersiveFeature';
 import BookGrid from '../components/BookGrid';
 import LoadingState from '../components/LoadingState';
 import ErrorState from '../components/ErrorState';
 
+gsap.registerPlugin(useGSAP, ScrollTrigger);
+
 export default function HomePage() {
   const [categories, setCategories] = useState([]);
   const [curatedBooks, setCuratedBooks] = useState([]);
   const [bestsellers, setBestsellers] = useState([]);
   const [newArrivals, setNewArrivals] = useState([]);
+  const [recommendations, setRecommendations] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
   const [retryTrigger, setRetryTrigger] = useState(0);
+
+  const homeRef = useRef(null);
 
   useEffect(() => {
     let ignore = false;
@@ -22,11 +30,12 @@ export default function HomePage() {
 
     const fetchData = async () => {
       try {
-        const [catsRes, booksRes, bestRes, newRes] = await Promise.all([
+        const [catsRes, booksRes, bestRes, newRes, recsRes] = await Promise.all([
           getCategories(controller.signal),
           getBooks({ page_size: 8 }, controller.signal),
           getBooks({ bestseller: true, page_size: 4 }, controller.signal),
           getBooks({ new_arrival: true, page_size: 4 }, controller.signal),
+          getRecommendations(4, controller.signal).catch(() => ({ results: [] })),
         ]);
 
         if (!ignore) {
@@ -34,6 +43,7 @@ export default function HomePage() {
           setCuratedBooks(booksRes?.results || []);
           setBestsellers(bestRes?.results || []);
           setNewArrivals(newRes?.results || []);
+          setRecommendations(recsRes?.results || []);
         }
       } catch (err) {
         if (!ignore && err.name !== 'CanceledError' && err.code !== 'ERR_CANCELED') {
@@ -55,8 +65,41 @@ export default function HomePage() {
     };
   }, [retryTrigger]);
 
+  // Orchestrate ScrollTrigger entrance for shelf sections
+  useGSAP(() => {
+    if (loading || error || !homeRef.current) return;
+    const prefersReducedMotion = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+    if (prefersReducedMotion) return;
+
+    const shelfSections = homeRef.current.querySelectorAll('.editorial-shelf-section');
+    shelfSections.forEach((section) => {
+      const headerText = section.querySelector('.shelf-header-text');
+      const viewAllLink = section.querySelector('.shelf-view-all-link');
+      const cards = section.querySelectorAll('.editorial-book-card, .editorial-category-card');
+
+      const tl = gsap.timeline({
+        scrollTrigger: {
+          trigger: section,
+          start: 'top 82%',
+          toggleActions: 'play none none none',
+        },
+        defaults: { ease: 'power3.out' },
+      });
+
+      if (headerText) {
+        tl.from(headerText, { opacity: 0, y: 24, duration: 0.8 });
+      }
+      if (viewAllLink) {
+        tl.from(viewAllLink, { opacity: 0, x: -12, duration: 0.6 }, '-=0.5');
+      }
+      if (cards.length > 0) {
+        tl.from(cards, { opacity: 0, y: 30, stagger: 0.08, duration: 0.7 }, '-=0.4');
+      }
+    });
+  }, { scope: homeRef, dependencies: [loading, error] });
+
   return (
-    <div className="editorial-homepage">
+    <div ref={homeRef} className="editorial-homepage">
       {/* SECTION B: Cinematic Hero Video & Editorial Statement */}
       <HeroSection />
 
@@ -87,7 +130,7 @@ export default function HomePage() {
         <>
           {/* SECTION C: Curated Book Collection */}
           {curatedBooks.length > 0 && (
-            <section className="editorial-shelf-section" aria-labelledby="heading-curated">
+            <section className="editorial-shelf-section" id="curated-selections" aria-labelledby="heading-curated">
               <div className="store-container">
                 <div className="shelf-header">
                   <div className="shelf-header-text">
@@ -111,6 +154,30 @@ export default function HomePage() {
 
           {/* SECTION D: Immersive Library Feature */}
           <ImmersiveFeature />
+
+          {/* SECTION: Curated Recommendations (Phase 8) */}
+          {recommendations.length > 0 && (
+            <section className="editorial-shelf-section recommendations-shelf" aria-labelledby="heading-recommendations">
+              <div className="store-container">
+                <div className="shelf-header">
+                  <div className="shelf-header-text">
+                    <span className="editorial-kicker">CURATED FOR YOU</span>
+                    <h2 id="heading-recommendations" className="shelf-title">
+                      Discover Your Next Read
+                    </h2>
+                    <p className="shelf-subtext">
+                      Intelligently selected volumes from our archive based on literary disciplines and reader favorites.
+                    </p>
+                  </div>
+                  <Link to="/reading-assistant" className="shelf-view-all-link">
+                    ✦ Ask AI Assistant <span className="arrow-glyph">→</span>
+                  </Link>
+                </div>
+
+                <BookGrid books={recommendations} />
+              </div>
+            </section>
+          )}
 
           {/* SECTION E: Browse by Discipline (Categories Showcase) */}
           {categories.length > 0 && (
