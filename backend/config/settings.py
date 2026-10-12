@@ -107,8 +107,32 @@ DATABASES = {
     'default': {
         'ENGINE': 'django.db.backends.sqlite3',
         'NAME': BASE_DIR / 'db.sqlite3',
-    }
+    },
+    'supabase': {
+        'ENGINE': 'django.db.backends.postgresql',
+        'NAME': os.environ.get('SUPABASE_DB_NAME', 'postgres'),
+        'USER': os.environ.get('SUPABASE_DB_USER', 'postgres.hwixuvvjvsmfhlrziwjj'),
+        'PASSWORD': os.environ.get('SUPABASE_DB_PASSWORD', ''),
+        'HOST': os.environ.get('SUPABASE_DB_HOST', 'aws-0-ap-south-1.pooler.supabase.com'),
+        'PORT': os.environ.get('SUPABASE_DB_PORT', '5432'),
+        'OPTIONS': {
+            'sslmode': os.environ.get('SUPABASE_DB_SSLMODE', 'require'),
+        },
+    },
 }
+
+# When DJANGO_USE_SUPABASE is True, route default database to Supabase PostgreSQL
+if os.environ.get('DJANGO_USE_SUPABASE', 'False').lower() in ('true', '1', 'yes'):
+    DATABASES['default'] = DATABASES['supabase']
+
+# Use isolated fast local database when running manage.py test
+import sys
+if 'test' in sys.argv:
+    DATABASES['default'] = {
+        'ENGINE': 'django.db.backends.sqlite3',
+        'NAME': BASE_DIR / 'test_db.sqlite3',
+    }
+
 
 
 # Password validation

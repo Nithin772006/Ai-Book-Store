@@ -13,6 +13,8 @@ db.sqlite3
 local_settings.py
 media/
 staticfiles/
+backend/backups/
+backups/
 
 # Node / React
 node_modules/
