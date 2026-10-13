@@ -531,3 +531,85 @@ class AdminCsrfAndAuthenticationRegressionTests(APITestCase):
         )
         self.assertEqual(valid_logout.status_code, status.HTTP_200_OK)
 
+    def test_cross_origin_admin_login_without_cookie_using_header_token_succeeds(self):
+        """
+        Verify cross-origin production scenario where third-party cookies are blocked:
+        origin is trusted (https://aetherium-admin.vercel.app), cookie is absent,
+        and X-CSRFToken header is verified.
+        """
+        csrf_init = self.csrf_client.get(
+            "/api/admin/auth/csrf/",
+            HTTP_ORIGIN="https://aetherium-admin.vercel.app"
+        )
+        self.assertEqual(csrf_init.status_code, status.HTTP_200_OK)
+        token = csrf_init.json()["csrfToken"]
+
+        # Clear client cookies to simulate cross-origin browser cookie suppression
+        self.csrf_client.cookies.clear()
+
+        payload = {
+            "identifier": "curator",
+            "password": "StrongStaffPassword123!"
+        }
+        response = self.csrf_client.post(
+            "/api/admin/auth/login/",
+            data=payload,
+            content_type="application/json",
+            HTTP_ORIGIN="https://aetherium-admin.vercel.app",
+            HTTP_X_CSRFTOKEN=token
+        )
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.assertIn("token", response.json())
+        self.assertTrue(response.json()["user"]["is_staff"])
+
+    def test_cross_origin_admin_login_from_untrusted_origin_rejected_with_403(self):
+        """Verify cross-origin login from an untrusted origin is strictly rejected by CSRF origin check."""
+        csrf_init = self.csrf_client.get("/api/admin/auth/csrf/")
+        token = csrf_init.json()["csrfToken"]
+
+        payload = {
+            "identifier": "curator",
+            "password": "StrongStaffPassword123!"
+        }
+        response = self.csrf_client.post(
+            "/api/admin/auth/login/",
+            data=payload,
+            content_type="application/json",
+            HTTP_ORIGIN="https://unauthorized-domain.com",
+            HTTP_X_CSRFTOKEN=token
+        )
+        self.assertEqual(response.status_code, status.HTTP_403_FORBIDDEN)
+        self.assertIn("Origin checking failed", response.content.decode())
+
+    def test_cross_origin_admin_login_with_invalid_csrf_token_rejected_with_403(self):
+        """Verify cross-origin login with malformed/invalid CSRF token is rejected with 403."""
+        self.csrf_client.cookies.clear()
+        payload = {
+            "identifier": "curator",
+            "password": "StrongStaffPassword123!"
+        }
+        response = self.csrf_client.post(
+            "/api/admin/auth/login/",
+            data=payload,
+            content_type="application/json",
+            HTTP_ORIGIN="https://aetherium-admin.vercel.app",
+            HTTP_X_CSRFTOKEN="invalid_csrf_token_value_that_fails_format_check"
+        )
+        self.assertEqual(response.status_code, status.HTTP_403_FORBIDDEN)
+
+    def test_cross_origin_admin_login_without_csrf_token_rejected_with_403(self):
+        """Verify cross-origin login with no token and no cookie is rejected with 403."""
+        self.csrf_client.cookies.clear()
+        payload = {
+            "identifier": "curator",
+            "password": "StrongStaffPassword123!"
+        }
+        response = self.csrf_client.post(
+            "/api/admin/auth/login/",
+            data=payload,
+            content_type="application/json",
+            HTTP_ORIGIN="https://aetherium-admin.vercel.app"
+        )
+        self.assertEqual(response.status_code, status.HTTP_403_FORBIDDEN)
+
+

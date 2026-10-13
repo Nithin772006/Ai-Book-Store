@@ -45,24 +45,49 @@ export const LoginPage = () => {
     setLoading(true);
 
     try {
+      console.info('[Auth] Initiating administrator login attempt...');
       await login(identifier.trim(), password, rememberMe);
+      console.info('[Auth] Administrator login successful, navigating to destination.');
       navigate(from, { replace: true });
     } catch (err) {
       const serverDetail = err.response?.data?.detail;
       const serverError = err.response?.data?.error;
-      const isCsrfError = (serverDetail && serverDetail.toLowerCase().includes('csrf')) ||
-                          (serverError && serverError.toLowerCase().includes('csrf'));
+      const status = err.response?.status;
+
+      const detailStr = (serverDetail || '').toLowerCase();
+      const errorStr = (serverError || '').toLowerCase();
+      const isCsrfError = detailStr.includes('csrf') || errorStr.includes('csrf');
 
       if (isCsrfError) {
-        // Attempt immediate token re-initialization
-        initAdminCsrf().catch(() => {});
-        setError('Security validation expired. Security token refreshed — please submit again.');
+        if (detailStr.includes('origin checking failed')) {
+          console.error('[Auth] CSRF Origin check failed: Frontend origin is not allowed in backend CSRF_TRUSTED_ORIGINS.');
+          setError('Origin verification failed: this admin frontend domain is not trusted by the backend. Please check backend CSRF_TRUSTED_ORIGINS.');
+        } else {
+          console.warn(`[Auth] CSRF validation failed (${serverDetail || 'token mismatch'}). Requesting fresh security token...`);
+          try {
+            await initAdminCsrf();
+            console.info('[Auth] Fresh CSRF token acquired successfully. Awaiting user resubmission.');
+            setError('Security validation expired. Security token refreshed — please submit again.');
+          } catch (refreshErr) {
+            console.error('[Auth] CSRF token re-initialization failed:', refreshErr.response?.status || refreshErr.message);
+            setError('Security validation expired, and the server could not issue a fresh security token. Please check server connectivity.');
+          }
+        }
+      } else if (status === 401) {
+        console.warn('[Auth] Login rejected: Invalid administrator credentials (401).');
+        setError(serverError || 'Invalid administrative credentials. Please verify your username and password.');
+      } else if (status === 403) {
+        console.warn('[Auth] Login rejected: Forbidden (403). Non-staff privileges or inactive account.');
+        setError(serverError || serverDetail || 'Access denied. Administrative staff privileges are required to access this portal.');
+      } else if (status === 400) {
+        console.warn('[Auth] Login rejected: Bad request (400).');
+        setError(serverError || serverDetail || 'Please verify the submitted administrator credentials.');
+      } else if (!err.response) {
+        console.error('[Auth] Login failed: Network connection error.');
+        setError('Unable to reach the administration backend. Please verify your network connection and ensure the Render backend is online.');
       } else {
-        const errorMsg = serverError || serverDetail ||
-          (err.response?.status === 403
-            ? 'Access denied. Administrative staff privileges are required.'
-            : 'Authentication failure. Please verify your administrator credentials.');
-        setError(errorMsg);
+        console.error(`[Auth] Login failed with HTTP status ${status}.`);
+        setError(serverError || serverDetail || `Authentication failed with status ${status}. Please try again.`);
       }
     } finally {
       setLoading(false);

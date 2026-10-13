@@ -35,7 +35,7 @@ const apiClient = axios.create({
   },
 });
 
-// Request interceptor: attach auth token and CSRF token if present
+// Request interceptor: attach auth token and CSRF token if present with safe logging
 apiClient.interceptors.request.use((config) => {
   const token = sessionStorage.getItem('aetherium_admin_token') || localStorage.getItem('aetherium_admin_token');
   if (token) {
@@ -48,14 +48,22 @@ apiClient.interceptors.request.use((config) => {
     config.headers['X-CSRFToken'] = csrfToken;
   }
 
+  const method = config.method ? config.method.toUpperCase() : 'REQ';
+  const url = config.url || '';
+  console.info(`[API Request] ${method} ${url} (CSRF attached: ${!!(config.headers['X-CSRFToken'] || csrfToken)})`);
+
   return config;
 }, (error) => {
   return Promise.reject(error);
 });
 
-// Response interceptor: capture rotated CSRF tokens and handle 401 unauthorized
+// Response interceptor: capture rotated CSRF tokens, log status, and handle 401 unauthorized
 apiClient.interceptors.response.use(
   (response) => {
+    const method = response.config?.method ? response.config.method.toUpperCase() : 'RES';
+    const url = response.config?.url || '';
+    console.info(`[API Response] ${method} ${url} -> status ${response.status} OK`);
+
     // If backend returns a rotated or established CSRF token in payload
     if (response.data && response.data.csrfToken) {
       setCsrfToken(response.data.csrfToken);
@@ -63,6 +71,11 @@ apiClient.interceptors.response.use(
     return response;
   },
   (error) => {
+    const method = error.config?.method ? error.config.method.toUpperCase() : 'ERR';
+    const url = error.config?.url || '';
+    const status = error.response?.status || 'Network Error';
+    console.warn(`[API Response Error] ${method} ${url} -> status ${status}`);
+
     if (error.response?.status === 401 && !window.location.pathname.includes('/login')) {
       sessionStorage.removeItem('aetherium_admin_token');
       localStorage.removeItem('aetherium_admin_token');

@@ -237,10 +237,12 @@ _default_cors_origins = [
     'http://127.0.0.1:5173',
     'http://localhost:5174',
     'http://127.0.0.1:5174',
+    'https://aetherium-admin.vercel.app',
+    'https://aetherium-storefront.vercel.app',
 ]
 _cors_env = os.environ.get('CORS_ALLOWED_ORIGINS', '')
 if _cors_env:
-    _custom_cors = [o.strip() for o in _cors_env.split(',') if o.strip()]
+    _custom_cors = [o.strip().rstrip('/') for o in _cors_env.split(',') if o.strip()]
     CORS_ALLOWED_ORIGINS = list(dict.fromkeys(_default_cors_origins + _custom_cors))
 else:
     CORS_ALLOWED_ORIGINS = _default_cors_origins
@@ -254,10 +256,12 @@ _default_csrf_trusted = [
     'http://127.0.0.1:5174',
     'http://localhost:8000',
     'http://127.0.0.1:8000',
+    'https://aetherium-admin.vercel.app',
+    'https://aetherium-storefront.vercel.app',
 ]
 _csrf_env = os.environ.get('CSRF_TRUSTED_ORIGINS', '')
 if _csrf_env:
-    _custom_csrf = [o.strip() for o in _csrf_env.split(',') if o.strip()]
+    _custom_csrf = [o.strip().rstrip('/') for o in _csrf_env.split(',') if o.strip()]
     CSRF_TRUSTED_ORIGINS = list(dict.fromkeys(_default_csrf_trusted + _custom_csrf))
 else:
     CSRF_TRUSTED_ORIGINS = _default_csrf_trusted
@@ -267,16 +271,34 @@ if os.environ.get('CORS_ALLOW_VERCEL_PREVIEWS', 'False').lower() in ('true', '1'
     CORS_ALLOWED_ORIGIN_REGEXES = [
         r"^https:\/\/.*\.vercel\.app$",
     ]
+    if 'https://*.vercel.app' not in CSRF_TRUSTED_ORIGINS:
+        CSRF_TRUSTED_ORIGINS.append('https://*.vercel.app')
 
-# Ensure frontend client can read CSRF token cookie for safe POST requests
+# In cross-origin production (Vercel admin -> Render backend), cookies require
+# SameSite='None' and Secure=True for cross-origin transmission.
 CSRF_COOKIE_HTTPONLY = False
-CSRF_COOKIE_SAMESITE = 'Lax'
-SESSION_COOKIE_SAMESITE = 'Lax'
 SESSION_COOKIE_HTTPONLY = True
+
+if not DEBUG:
+    CSRF_COOKIE_SAMESITE = os.environ.get('CSRF_COOKIE_SAMESITE', 'None')
+    CSRF_COOKIE_SECURE = True
+    SESSION_COOKIE_SAMESITE = os.environ.get('SESSION_COOKIE_SAMESITE', 'None')
+    SESSION_COOKIE_SECURE = True
+else:
+    CSRF_COOKIE_SAMESITE = os.environ.get('CSRF_COOKIE_SAMESITE', 'Lax')
+    CSRF_COOKIE_SECURE = False
+    SESSION_COOKIE_SAMESITE = os.environ.get('SESSION_COOKIE_SAMESITE', 'Lax')
+    SESSION_COOKIE_SECURE = False
 
 CORS_EXPOSE_HEADERS = [
     'Content-Type',
     'X-CSRFToken',
+]
+
+from corsheaders.defaults import default_headers
+
+CORS_ALLOW_HEADERS = list(default_headers) + [
+    'x-csrftoken',
 ]
 
 # =============================================================================

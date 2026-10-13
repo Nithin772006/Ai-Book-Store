@@ -5,34 +5,50 @@ import apiClient, { setCsrfToken, getCsrfToken } from './client';
 // ==========================================
 
 export const initAdminCsrf = async () => {
-  const response = await apiClient.get('/admin/auth/csrf/');
-  if (response.data?.csrfToken) {
-    setCsrfToken(response.data.csrfToken);
+  console.info('[Auth] Acquiring CSRF security token from /admin/auth/csrf/...');
+  try {
+    const response = await apiClient.get('/admin/auth/csrf/');
+    if (response.data?.csrfToken) {
+      setCsrfToken(response.data.csrfToken);
+    }
+    console.info(`[Auth] Security token acquisition succeeded (status ${response.status}).`);
+    return response.data;
+  } catch (err) {
+    const status = err.response?.status || 'Network Error';
+    console.error(`[Auth] Security token acquisition failed (status ${status}):`, err.message);
+    throw err;
   }
-  return response.data;
 };
 
 export const adminLogin = async (identifier, password) => {
   // Ensure we have acquired an active CSRF token prior to POSTing credentials
   if (!getCsrfToken()) {
+    console.info('[Auth] No active CSRF token detected in memory or cookie; fetching fresh token...');
     try {
       await initAdminCsrf();
     } catch (err) {
-      // Allow proceeding if cookie is already present in browser
-      console.warn('CSRF initialization notice:', err?.message);
+      console.warn('[Auth] Pre-login token acquisition attempt failed; proceeding with request:', err?.message);
     }
   }
 
-  const response = await apiClient.post('/admin/auth/login/', {
-    identifier,
-    password,
-  });
+  console.info('[Auth] Submitting administrator login credentials to /admin/auth/login/...');
+  try {
+    const response = await apiClient.post('/admin/auth/login/', {
+      identifier,
+      password,
+    });
 
-  if (response.data?.csrfToken) {
-    setCsrfToken(response.data.csrfToken);
+    console.info(`[Auth] Administrator login succeeded (status ${response.status}).`);
+    if (response.data?.csrfToken) {
+      setCsrfToken(response.data.csrfToken);
+    }
+
+    return response.data;
+  } catch (err) {
+    const status = err.response?.status || 'Network Error';
+    console.warn(`[Auth] Administrator login request rejected (status ${status}).`);
+    throw err;
   }
-
-  return response.data;
 };
 
 export const adminGetMe = async () => {
@@ -86,7 +102,7 @@ export const updateAdminBook = async (id, formData) => {
 };
 
 export const deleteAdminBook = async (id) => {
-  const response = await apiClient.delete(`/admin/books/${id}//`);
+  const response = await apiClient.delete(`/admin/books/${id}/`);
   return response.data;
 };
 
